@@ -30,13 +30,25 @@ final class AppRuntimeInputRoleTests: XCTestCase {
 
         XCTAssertEqual(fixture.runtime.effectiveChineseInputSource, TestInputSources.shuangpin)
         XCTAssertEqual(fixture.runtime.effectiveEnglishInputSource, TestInputSources.us)
-        XCTAssertEqual(fixture.runtime.effectiveVoiceInputSource, TestInputSources.doubao)
         XCTAssertEqual(
             fixture.runtime.ruleRoleChoices.map(\.name),
             ["中文（Shuangpin – Simplified）", "英文（U.S.）"]
         )
-        // Every input source is covered by a role, so nothing else is offered.
-        XCTAssertEqual(fixture.runtime.inputSourceChoices(for: terminal), [])
+        // Input sources that no role covers are offered on their own.
+        XCTAssertEqual(
+            fixture.runtime.inputSourceChoices(for: terminal).map(\.id),
+            [TestInputSources.doubao.id]
+        )
+    }
+
+    @MainActor
+    func testExternalSwitchUpdatesTheCurrentInputSource() async {
+        let fixture = makeRoleFixture()
+        fixture.runtime.start()
+        defer { fixture.runtime.stop() }
+
+        fixture.inputSources.simulateSelection(of: TestInputSources.doubao)
+        XCTAssertEqual(fixture.runtime.currentInputSource, TestInputSources.doubao)
     }
 
     @MainActor

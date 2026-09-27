@@ -33,8 +33,6 @@ struct RuntimeFixture {
     let inputSources: FakeInputSourceManager
     let scanner: FakeApplicationScanner
     let loginItems: FakeLoginItemManager
-    let microphone: FakeMicrophoneMonitor
-    let overlay: FakeVoiceOverlayDetector
     let defaults: UserDefaults
     let suiteName: String
 }
@@ -69,8 +67,6 @@ func makeFixture(
         delay: scanDelay
     )
     let loginItems = FakeLoginItemManager()
-    let microphone = FakeMicrophoneMonitor()
-    let overlay = FakeVoiceOverlayDetector()
 
     let runtime = AppRuntime(
         store: store,
@@ -82,10 +78,6 @@ func makeFixture(
         inputSourceManager: inputSources,
         applicationScanner: scanner,
         loginItemManager: loginItems,
-        microphoneMonitor: microphone,
-        overlayDetector: overlay,
-        voiceSettleDelay: 0.05,
-        voiceOverlayTimeout: 0.5,
         switchCounter: SwitchCounter(defaults: defaults),
         defaults: defaults,
         updateController: nil,
@@ -108,8 +100,6 @@ func makeFixture(
         inputSources: inputSources,
         scanner: scanner,
         loginItems: loginItems,
-        microphone: microphone,
-        overlay: overlay,
         defaults: defaults,
         suiteName: suiteName
     )

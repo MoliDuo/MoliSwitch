@@ -96,23 +96,6 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testFocusChangeWaitsWhileTheVoiceInputSourceIsSelected() async {
-        let fixture = makeWeChatFixture()
-        fixture.runtime.startVoiceRestore()
-        defer { fixture.runtime.stopVoiceRestore() }
-        fixture.fields.focus(chatField)
-        fixture.runtime.applyRuleIfNeeded(for: wechat)
-
-        fixture.inputSources.simulateSelection(of: TestInputSources.doubao)
-        fixture.fields.focus(searchField)
-        XCTAssertEqual(fixture.inputSources.current, TestInputSources.doubao)
-
-        // Once the voice input method switched back, the field's rule applies.
-        fixture.inputSources.simulateSelection(of: TestInputSources.shuangpin)
-        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
-    }
-
-    @MainActor
     func testWithoutAccessibilityTheApplicationRuleApplies() async {
         let fixture = makeWeChatFixture(current: TestInputSources.us)
         fixture.fields.isTrusted = false

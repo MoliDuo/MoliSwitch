@@ -5,8 +5,6 @@ import Foundation
 @MainActor
 final class AppRuntime: ObservableObject {
     static let showMenuBarIconKey = "showMenuBarIcon"
-    static let voiceRestoreEnabledKey = "voiceRestoreEnabled"
-    static let voiceInputSourceIDKey = "voiceInputSourceID"
     static let chineseInputSourceIDKey = "chineseInputSourceID"
     static let englishInputSourceIDKey = "englishInputSourceID"
     static let terminalSwitchingEnabledKey = "terminalSwitchingEnabled"
@@ -61,27 +59,12 @@ final class AppRuntime: ObservableObject {
             defaults.set(showMenuBarIcon, forKey: Self.showMenuBarIconKey)
         }
     }
-    @Published var voiceRestoreEnabled: Bool {
-        didSet {
-            guard voiceRestoreEnabled != oldValue else { return }
-            defaults.set(voiceRestoreEnabled, forKey: Self.voiceRestoreEnabledKey)
-            reconfigureVoiceRestore()
-        }
-    }
     /// Whether command rules apply in Terminal and iTerm2.
     @Published var terminalSwitchingEnabled: Bool {
         didSet {
             guard terminalSwitchingEnabled != oldValue else { return }
             defaults.set(terminalSwitchingEnabled, forKey: Self.terminalSwitchingEnabledKey)
             updateTerminalPolling(for: currentApplication)
-        }
-    }
-    /// The chosen voice input source, or automaticInputSourceID.
-    @Published var voiceInputSourceSelection: String {
-        didSet {
-            guard voiceInputSourceSelection != oldValue else { return }
-            persistSelection(voiceInputSourceSelection, forKey: Self.voiceInputSourceIDKey)
-            reconfigureVoiceRestore()
         }
     }
     /// The chosen Chinese input source, or automaticInputSourceID.
@@ -140,10 +123,6 @@ final class AppRuntime: ObservableObject {
     private let inputSourceManager: any InputSourceManaging
     private let applicationScanner: any ApplicationScanning
     private let loginItemManager: any LoginItemManaging
-    private let microphoneMonitor: any MicrophoneActivityMonitoring
-    private let overlayDetector: any VoiceOverlayDetecting
-    private let voiceSettleDelay: TimeInterval
-    private let voiceOverlayTimeout: TimeInterval
     private let switchCounter: SwitchCounter
     private let defaults: UserDefaults
     private let ownBundleIdentifier: String?
@@ -153,11 +132,6 @@ final class AppRuntime: ObservableObject {
     private var activationObserver: NSObjectProtocol?
     private var hasStarted = false
     private var hasStopped = false
-
-    private var voiceMonitoringActive = false
-    private var voiceRestorer: VoiceInputRestorer?
-    private var voiceBundleIdentifier: String?
-    private var voiceDeadlineTask: Task<Void, Never>?
 
     private var terminalPollTask: Task<Void, Never>?
     private var polledApplication: RunningApplicationInfo?
@@ -185,10 +159,6 @@ final class AppRuntime: ObservableObject {
         inputSourceManager: any InputSourceManaging = SystemInputSourceManager(),
         applicationScanner: any ApplicationScanning = InstalledApplicationScanner(),
         loginItemManager: any LoginItemManaging = SystemLoginItemManager(),
-        microphoneMonitor: any MicrophoneActivityMonitoring = SystemMicrophoneMonitor(),
-        overlayDetector: any VoiceOverlayDetecting = SystemVoiceOverlayDetector(),
-        voiceSettleDelay: TimeInterval = 0.3,
-        voiceOverlayTimeout: TimeInterval = 8,
         switchCounter: SwitchCounter = SwitchCounter(),
         defaults: UserDefaults = .standard,
         updateController: UpdateController? = nil,
@@ -203,19 +173,12 @@ final class AppRuntime: ObservableObject {
         self.inputSourceManager = inputSourceManager
         self.applicationScanner = applicationScanner
         self.loginItemManager = loginItemManager
-        self.microphoneMonitor = microphoneMonitor
-        self.overlayDetector = overlayDetector
-        self.voiceSettleDelay = voiceSettleDelay
-        self.voiceOverlayTimeout = voiceOverlayTimeout
         self.switchCounter = switchCounter
         self.defaults = defaults
         self.updateController = updateController
         self.ownBundleIdentifier = ownBundleIdentifier
         self.showMenuBarIcon = defaults.object(forKey: Self.showMenuBarIconKey) as? Bool ?? true
-        self.voiceRestoreEnabled = defaults.object(forKey: Self.voiceRestoreEnabledKey) as? Bool ?? true
         self.terminalSwitchingEnabled = defaults.object(forKey: Self.terminalSwitchingEnabledKey) as? Bool ?? true
-        self.voiceInputSourceSelection = defaults.string(forKey: Self.voiceInputSourceIDKey)
-            ?? Self.automaticInputSourceID
         self.chineseInputSourceSelection = defaults.string(forKey: Self.chineseInputSourceIDKey)
             ?? Self.automaticInputSourceID
         self.englishInputSourceSelection = defaults.string(forKey: Self.englishInputSourceIDKey)
@@ -261,7 +224,7 @@ final class AppRuntime: ObservableObject {
         inputSourceManager.stopMonitoringEnabledSources()
         stopTerminalPolling()
         stopFollowingFields()
-        stopVoiceRestore()
+        inputSourceManager.stopMonitoringSelectedSource()
         updateController?.stop()
     }
 
@@ -470,7 +433,6 @@ final class AppRuntime: ObservableObject {
         inputSourceManager.invalidateCache()
         inputSources = inputSourceManager.availableInputSources()
         currentInputSource = inputSourceManager.currentInputSource()
-        reconfigureVoiceRestore()
     }
 
     /// The picker value for one application. A rule that names the current
@@ -541,9 +503,7 @@ final class AppRuntime: ObservableObject {
 
     /// Picker entries besides the roles, including the saved input source when
     /// it is no longer installed, so a rule is never silently rewritten. The
-    /// Chinese and English input sources are offered through their roles, and
-    /// while voice restore is on, the voice input source is offered only to a
-    /// rule that already uses it.
+    /// Chinese and English input sources are offered through their roles.
     func inputSourceChoices(for application: InstalledApplication) -> [InputSourceChoice] {
         inputSourceChoices(
             selectedID: selectedInputSourceID(for: application),
@@ -556,8 +516,7 @@ final class AppRuntime: ObservableObject {
     }
 
     private func inputSourceChoices(selectedID: String, savedName: String?) -> [InputSourceChoice] {
-        let voiceID = voiceRestoreEnabled ? effectiveVoiceInputSource?.id : nil
-        let hiddenIDs = Set([effectiveChineseInputSource?.id, effectiveEnglishInputSource?.id, voiceID].compactMap { $0 })
+        let hiddenIDs = Set([effectiveChineseInputSource?.id, effectiveEnglishInputSource?.id].compactMap { $0 })
         var choices = inputSources
             .filter { !hiddenIDs.contains($0.id) || $0.id == selectedID }
             .map { InputSourceChoice(id: $0.id, name: $0.name) }
@@ -885,13 +844,11 @@ final class AppRuntime: ObservableObject {
         resolveInputSource(chineseInputSourceSelection) { detectedChineseInputSource }
     }
 
-    /// An input method that is neither a keyboard layout nor the voice input
-    /// source, for example Shuangpin. Apple's own Chinese input methods come
+    /// An input method that is not a keyboard layout, for example Shuangpin. Apple's own Chinese input methods come
     /// first so that the result does not depend on how third-party input
     /// methods such as 微信键盘 or 搜狗 happen to be named.
     var detectedChineseInputSource: InputSource? {
-        let voiceID = effectiveVoiceInputSource?.id
-        let candidates = inputSources.filter { !Self.isKeyboardLayout($0.id) && $0.id != voiceID }
+        let candidates = inputSources.filter { !Self.isKeyboardLayout($0.id) }
         return candidates.first(where: { Self.isAppleChineseInputMethod($0.id) }) ?? candidates.first
     }
 
@@ -1155,7 +1112,9 @@ final class AppRuntime: ObservableObject {
             self?.refreshInputSources()
         }
 
-        startVoiceRestore()
+        inputSourceManager.startMonitoringSelectedSource { [weak self] in
+            self?.handleSelectedInputSourceChanged()
+        }
     }
 
     private func updateCurrentApplication(from app: NSRunningApplication?) {
@@ -1269,7 +1228,6 @@ final class AppRuntime: ObservableObject {
             previousKey != nil,
             let restore,
             restore.previousID != restore.fieldID,
-            restore.previousID != effectiveVoiceInputSource?.id,
             inputSourceManager.currentInputSource()?.id == restore.fieldID
         {
             let name = inputSources.first { $0.id == restore.previousID }?.name ?? restore.previousID
@@ -1287,9 +1245,6 @@ final class AppRuntime: ObservableObject {
     private func reapplyIfContextChanged(for app: RunningApplicationInfo) {
         let rule = activeRule(for: app)
         guard rule?.key != appliedRuleKey else { return }
-        // Switching now would cut off a voice input method that is listening;
-        // the change is applied once it switched back.
-        guard !isVoiceInputSourceSelected else { return }
 
         apply(rule)
     }
@@ -1496,27 +1451,10 @@ final class AppRuntime: ObservableObject {
         reapplyIfContextChanged(for: app)
     }
 
-    private var isVoiceInputSourceSelected: Bool {
-        guard let voiceID = effectiveVoiceInputSource?.id else { return false }
-        return normalizedVoiceSourceID(inputSourceManager.currentInputSource()?.id) == voiceID
-    }
+    // MARK: - Selected input source
 
-    // MARK: - Voice input restore
-
-    /// The voice input source in effect: the saved choice, otherwise the first
-    /// input source that looks like Doubao.
-    var effectiveVoiceInputSource: InputSource? {
-        resolveInputSource(voiceInputSourceSelection) { detectedVoiceInputSource }
-    }
-
-    var detectedVoiceInputSource: InputSource? {
-        inputSources.first {
-            VoiceInputRestorer.isLikelyVoiceInputSource(id: $0.id, name: $0.name)
-        }
-    }
-
-    var voiceInputSourceChoices: [InputSourceChoice] {
-        settingChoices(for: voiceInputSourceSelection)
+    private func handleSelectedInputSourceChanged() {
+        currentInputSource = inputSourceManager.currentInputSource()
     }
 
     /// Picker entries for a settings choice, keeping a saved choice that is no
@@ -1530,163 +1468,5 @@ final class AppRuntime: ObservableObject {
             choices.append(InputSourceChoice(id: selection, name: "不可用：" + selection))
         }
         return choices
-    }
-
-    func startVoiceRestore() {
-        guard !voiceMonitoringActive else { return }
-        voiceMonitoringActive = true
-
-        inputSourceManager.startMonitoringSelectedSource { [weak self] in
-            self?.handleSelectedInputSourceChanged()
-        }
-        reconfigureVoiceRestore()
-    }
-
-    func stopVoiceRestore() {
-        voiceMonitoringActive = false
-        inputSourceManager.stopMonitoringSelectedSource()
-        tearDownVoiceSession()
-    }
-
-    /// Rebuilds the state machine when the feature, the chosen input source or the
-    /// list of input sources changes. An unchanged configuration keeps a session
-    /// that is in progress.
-    private func reconfigureVoiceRestore() {
-        guard
-            voiceMonitoringActive,
-            voiceRestoreEnabled,
-            let voiceSource = effectiveVoiceInputSource
-        else {
-            tearDownVoiceSession()
-            return
-        }
-
-        let configuration = VoiceInputRestorer.Configuration(
-            voiceSourceID: voiceSource.id,
-            settleDelay: voiceSettleDelay,
-            overlayTimeout: voiceOverlayTimeout
-        )
-        guard voiceRestorer?.configuration != configuration else { return }
-
-        tearDownVoiceSession()
-        voiceBundleIdentifier = inputSourceManager.bundleIdentifier(forSourceID: voiceSource.id)
-        voiceRestorer = VoiceInputRestorer(
-            configuration: configuration,
-            currentSourceID: normalizedVoiceSourceID(inputSourceManager.currentInputSource()?.id)
-        )
-        VoiceLog.logger.info(
-            "voice restore enabled for \(voiceSource.id, privacy: .public) bundle=\(self.voiceBundleIdentifier ?? "-", privacy: .public)"
-        )
-
-        microphoneMonitor.start { [weak self] running in
-            self?.handleVoiceEvent(.microphone(running: running))
-        }
-    }
-
-    private func tearDownVoiceSession() {
-        microphoneMonitor.stop()
-        overlayDetector.stop()
-        voiceDeadlineTask?.cancel()
-        voiceDeadlineTask = nil
-        voiceRestorer = nil
-        voiceBundleIdentifier = nil
-    }
-
-    private func handleSelectedInputSourceChanged() {
-        currentInputSource = inputSourceManager.currentInputSource()
-        handleVoiceEvent(.sourceChanged(id: normalizedVoiceSourceID(currentInputSource?.id)))
-
-        // Focus may have moved to a field with a rule of its own while the voice
-        // input method was listening.
-        if let fieldApplication, fieldApplication == currentApplication {
-            reapplyIfContextChanged(for: fieldApplication)
-        }
-    }
-
-    /// Input modes of the voice input method (for example its pinyin mode) count
-    /// as the voice input source itself.
-    private func normalizedVoiceSourceID(_ id: String?) -> String? {
-        guard
-            let id,
-            let voiceSourceID = effectiveVoiceInputSource?.id,
-            id != voiceSourceID,
-            let voiceBundleIdentifier
-        else {
-            return id
-        }
-
-        return inputSourceManager.bundleIdentifier(forSourceID: id) == voiceBundleIdentifier
-            ? voiceSourceID
-            : id
-    }
-
-    private func handleVoiceEvent(_ event: VoiceInputRestorer.Event) {
-        guard var restorer = voiceRestorer else { return }
-
-        let before = restorer.phase
-        let actions = restorer.handle(event, now: Date())
-        voiceRestorer = restorer
-
-        if restorer.phase != before || !actions.isEmpty {
-            VoiceLog.logger.info(
-                "\(String(describing: event), privacy: .public): \(String(describing: before), privacy: .public) -> \(String(describing: restorer.phase), privacy: .public) actions=\(String(describing: actions), privacy: .public)"
-            )
-        }
-
-        for action in actions {
-            perform(action)
-        }
-    }
-
-    private func perform(_ action: VoiceInputRestorer.Action) {
-        switch action {
-        case .restore(let sourceID):
-            // Caps Lock toggles between the keyboard layout and the input method
-            // used last, which would be the voice input method now. Selecting the
-            // Chinese input method first makes Caps Lock return to it instead.
-            if
-                Self.isKeyboardLayout(sourceID),
-                let chineseID = effectiveChineseInputSource?.id,
-                chineseID != effectiveVoiceInputSource?.id
-            {
-                _ = inputSourceManager.selectInputSource(id: chineseID)
-            }
-            if inputSourceManager.selectInputSource(id: sourceID) {
-                switchCounter.recordSwitch()
-                switchCount = switchCounter.count
-            } else {
-                VoiceLog.logger.error("restore to \(sourceID, privacy: .public) failed")
-            }
-            currentInputSource = inputSourceManager.currentInputSource()
-
-        case .scheduleDeadline(let date):
-            voiceDeadlineTask?.cancel()
-            voiceDeadlineTask = Task { [weak self] in
-                let delay = max(0, date.timeIntervalSinceNow)
-                do {
-                    try await Task.sleep(for: .seconds(delay))
-                } catch {
-                    return
-                }
-                guard let self, !Task.isCancelled else { return }
-                self.voiceDeadlineTask = nil
-                self.handleVoiceEvent(.deadlineReached)
-            }
-
-        case .cancelDeadline:
-            voiceDeadlineTask?.cancel()
-            voiceDeadlineTask = nil
-
-        case .captureOverlayBaseline:
-            overlayDetector.captureBaseline(bundleIdentifier: voiceBundleIdentifier)
-
-        case .startOverlayWatch:
-            overlayDetector.start(bundleIdentifier: voiceBundleIdentifier) { [weak self] visible in
-                self?.handleVoiceEvent(.overlay(visible: visible))
-            }
-
-        case .stopOverlayWatch:
-            overlayDetector.stop()
-        }
     }
 }

@@ -109,8 +109,6 @@ final class FakeInputSourceManager: InputSourceManaging {
     private(set) var selectedIDs: [String] = []
     private(set) var startMonitoringCount = 0
     private(set) var stopMonitoringCount = 0
-    /// Bundle identifier per input source ID, for bundleIdentifier(forSourceID:).
-    var bundleIdentifiers: [String: String] = [:]
     private var selectionHandler: (@MainActor () -> Void)?
 
     init(sources: [InputSource], current: InputSource? = nil) {
@@ -161,63 +159,10 @@ final class FakeInputSourceManager: InputSourceManaging {
         selectionHandler = nil
     }
 
-    func bundleIdentifier(forSourceID id: String) -> String? {
-        bundleIdentifiers[id]
-    }
-
     /// Simulates a switch made outside the app, such as a global hot key.
     func simulateSelection(of source: InputSource) {
         current = source
         selectionHandler?()
-    }
-}
-
-// MARK: - Voice input
-
-@MainActor
-final class FakeMicrophoneMonitor: MicrophoneActivityMonitoring {
-    private(set) var isRunning = false
-    private(set) var isMonitoring = false
-    private var handler: (@MainActor (Bool) -> Void)?
-
-    func start(_ handler: @escaping @MainActor (Bool) -> Void) {
-        self.handler = handler
-        isMonitoring = true
-    }
-
-    func stop() {
-        handler = nil
-        isMonitoring = false
-    }
-
-    func simulate(running: Bool) {
-        isRunning = running
-        handler?(running)
-    }
-}
-
-@MainActor
-final class FakeVoiceOverlayDetector: VoiceOverlayDetecting {
-    private(set) var baselineCount = 0
-    private(set) var isWatching = false
-    private var handler: (@MainActor (Bool) -> Void)?
-
-    func captureBaseline(bundleIdentifier: String?) {
-        baselineCount += 1
-    }
-
-    func start(bundleIdentifier: String?, handler: @escaping @MainActor (Bool) -> Void) {
-        self.handler = handler
-        isWatching = true
-    }
-
-    func stop() {
-        handler = nil
-        isWatching = false
-    }
-
-    func simulate(visible: Bool) {
-        handler?(visible)
     }
 }
 

@@ -98,14 +98,6 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
         }
     }
 
-    func bundleIdentifier(forSourceID id: String) -> String? {
-        guard let source = inputSource(matching: id) else {
-            return nil
-        }
-
-        return stringProperty(source, kTISPropertyBundleID)
-    }
-
     private func handleEnabledInputSourcesChanged() {
         invalidateCache()
         changeHandler?()

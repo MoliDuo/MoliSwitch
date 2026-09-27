@@ -91,24 +91,6 @@ final class AppRuntimeTerminalCommandTests: XCTestCase {
     }
 
     @MainActor
-    func testNoSwitchWhileTheVoiceInputSourceIsSelected() async {
-        let fixture = makeTerminalFixture()
-        defer { fixture.runtime.stop() }
-        fixture.terminal.run(["zsh"])
-        fixture.runtime.applyRuleIfNeeded(for: terminalApp)
-
-        fixture.inputSources.current = TestInputSources.doubao
-        fixture.terminal.run(["claude"])
-        await waitForPolls(fixture)
-        XCTAssertEqual(fixture.inputSources.current, TestInputSources.doubao)
-
-        // Once the voice input method switched back, the change is applied.
-        fixture.inputSources.current = TestInputSources.us
-        await waitUntil { fixture.inputSources.current == TestInputSources.shuangpin }
-        XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
-    }
-
-    @MainActor
     func testUnavailableContextKeepsTheCurrentRule() async {
         let fixture = makeTerminalFixture()
         defer { fixture.runtime.stop() }

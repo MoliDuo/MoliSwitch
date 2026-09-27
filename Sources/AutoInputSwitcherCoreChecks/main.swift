@@ -17,9 +17,6 @@ struct CoreChecks {
         try testIdentifierValidationRejectsPlaceholderAndBlankValues()
         try testJSONRuleStoreThrowsOnCorruptFileAndKeepsItIntact()
         try testApplicationListFilterRequiresInstalledApplicationsWhenUnconfigured()
-        try testVoiceInputRestorerRestoresAfterOverlayDisappears()
-        try testVoiceInputRestorerIgnoresManualSwitchWithoutMicrophone()
-        try testVoiceInputRestorerStopsWhenSourceChangesAway()
         try testFieldRuleMatchesTheSavedField()
         try testAddressBarDetectorRecognisesSafariAndChrome()
         print("Core checks passed")
@@ -274,58 +271,6 @@ struct CoreChecks {
         )
         try expectEqual(configured.includes(leftover), true)
         try expectEqual(configured.includes(installed), false)
-    }
-
-    private static func testVoiceInputRestorerRestoresAfterOverlayDisappears() throws {
-        let start = Date(timeIntervalSinceReferenceDate: 0)
-        var restorer = VoiceInputRestorer(
-            configuration: VoiceInputRestorer.Configuration(voiceSourceID: "doubao"),
-            currentSourceID: "abc"
-        )
-
-        _ = restorer.handle(.sourceChanged(id: "doubao"), now: start)
-        _ = restorer.handle(.microphone(running: true), now: start.addingTimeInterval(0.1))
-        try expectEqual(
-            restorer.handle(.microphone(running: false), now: start.addingTimeInterval(2)),
-            [.scheduleDeadline(start.addingTimeInterval(10)), .startOverlayWatch]
-        )
-        try expectEqual(
-            restorer.handle(.overlay(visible: false), now: start.addingTimeInterval(3)),
-            [.scheduleDeadline(start.addingTimeInterval(3.3))]
-        )
-        try expectEqual(
-            restorer.handle(.deadlineReached, now: start.addingTimeInterval(3.3)),
-            [.stopOverlayWatch, .restore(sourceID: "abc")]
-        )
-    }
-
-    private static func testVoiceInputRestorerIgnoresManualSwitchWithoutMicrophone() throws {
-        let start = Date(timeIntervalSinceReferenceDate: 0)
-        var restorer = VoiceInputRestorer(
-            configuration: VoiceInputRestorer.Configuration(voiceSourceID: "doubao"),
-            currentSourceID: "abc"
-        )
-
-        _ = restorer.handle(.sourceChanged(id: "doubao"), now: start)
-        try expectEqual(restorer.handle(.deadlineReached, now: start.addingTimeInterval(20)), [])
-        try expectEqual(restorer.phase, .armed(previous: "abc"))
-    }
-
-    private static func testVoiceInputRestorerStopsWhenSourceChangesAway() throws {
-        let start = Date(timeIntervalSinceReferenceDate: 0)
-        var restorer = VoiceInputRestorer(
-            configuration: VoiceInputRestorer.Configuration(voiceSourceID: "doubao"),
-            currentSourceID: "abc"
-        )
-
-        _ = restorer.handle(.sourceChanged(id: "doubao"), now: start)
-        _ = restorer.handle(.microphone(running: true), now: start)
-        _ = restorer.handle(.microphone(running: false), now: start.addingTimeInterval(1))
-        try expectEqual(
-            restorer.handle(.sourceChanged(id: "us"), now: start.addingTimeInterval(1.5)),
-            [.cancelDeadline, .stopOverlayWatch]
-        )
-        try expectEqual(restorer.handle(.deadlineReached, now: start.addingTimeInterval(9)), [])
     }
 
     private static func testFieldRuleMatchesTheSavedField() throws {

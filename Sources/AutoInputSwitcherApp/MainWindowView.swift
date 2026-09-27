@@ -611,12 +611,6 @@ private struct SettingsPanel: View {
                     detected: runtime.detectedEnglishInputSource,
                     choices: runtime.englishInputSourceChoices
                 )
-                inputSourcePicker(
-                    "语音",
-                    selection: $runtime.voiceInputSourceSelection,
-                    detected: runtime.detectedVoiceInputSource,
-                    choices: runtime.voiceInputSourceChoices
-                )
             } header: {
                 Text("输入法")
             } footer: {
@@ -644,15 +638,6 @@ private struct SettingsPanel: View {
                 }
             } footer: {
                 Text("列表里设为“默认”的 App 切到这个输入法。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Section {
-                Toggle("语音输入后切回原输入法", isOn: $runtime.voiceRestoreEnabled)
-            } footer: {
-                Text(voiceFooter)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -691,13 +676,6 @@ private struct SettingsPanel: View {
                 Text(choice.name).tag(choice.id)
             }
         }
-    }
-
-    private var voiceFooter: String {
-        if runtime.voiceRestoreEnabled && runtime.effectiveVoiceInputSource == nil {
-            return "未找到豆包输入法，请在系统设置中添加，或在上面手动选择语音输入法。"
-        }
-        return "用豆包等语音输入法说完一句话后，自动切回之前的输入法。"
     }
 }
 

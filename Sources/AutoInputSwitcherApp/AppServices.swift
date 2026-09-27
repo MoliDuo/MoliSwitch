@@ -14,29 +14,6 @@ protocol InputSourceManaging: AnyObject {
     /// Called whenever the selected input source changes, whoever changed it.
     func startMonitoringSelectedSource(_ handler: @escaping @MainActor () -> Void)
     func stopMonitoringSelectedSource()
-    /// Bundle identifier of the process that provides the input source.
-    func bundleIdentifier(forSourceID id: String) -> String?
-}
-
-/// Whether any process is using the default audio input device. Only the usage
-/// flag is read, nothing is recorded.
-@MainActor
-protocol MicrophoneActivityMonitoring: AnyObject {
-    var isRunning: Bool { get }
-    /// The handler receives changes of the running state.
-    func start(_ handler: @escaping @MainActor (Bool) -> Void)
-    func stop()
-}
-
-/// Detects the floating overlay a voice input method shows while it records and
-/// recognises speech.
-@MainActor
-protocol VoiceOverlayDetecting: AnyObject {
-    /// Records the windows that already exist, so they are not taken for the overlay.
-    func captureBaseline(bundleIdentifier: String?)
-    /// Reports visibility changes until stop() is called.
-    func start(bundleIdentifier: String?, handler: @escaping @MainActor (Bool) -> Void)
-    func stop()
 }
 
 @MainActor
