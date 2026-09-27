@@ -103,11 +103,11 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testSelectingTheNoSwitchSentinelRemovesTheRule() async {
+    func testSelectingDefaultRemovesTheRule() async {
         let fixture = makeFixture(rules: [makeRule(bundleIdentifier: "com.apple.Terminal")])
 
         fixture.runtime.setInputSourceID(
-            AppRuntime.noSwitchInputSourceID,
+            AppRuntime.followDefaultInputSourceID,
             for: terminal
         )
 
@@ -201,7 +201,7 @@ final class AppRuntimeRulesTests: XCTestCase {
             TestInputSources.abc.id
         )
 
-        fixture.runtime.setInputSourceID(AppRuntime.noSwitchInputSourceID, for: ghost)
+        fixture.runtime.setInputSourceID(AppRuntime.followDefaultInputSourceID, for: ghost)
 
         XCTAssertNil(fixture.runtime.ruleSet.rule(forBundleIdentifier: "com.example.ghost"))
         XCTAssertTrue(fixture.store.rules.isEmpty)

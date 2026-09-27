@@ -43,11 +43,16 @@ final class RuleSetTests: XCTestCase {
             rule(bundleIdentifier: "-"),
             rule(bundleIdentifier: "com.apple.Safari", inputSourceID: ""),
             rule(bundleIdentifier: "com.apple.Notes", inputSourceID: "  "),
-            rule(bundleIdentifier: "com.apple.Mail", inputSourceID: "-"),
             valid
         ]
 
         XCTAssertEqual(RuleSet(normalizing: rules).rules, [valid])
+    }
+
+    func testNormalizingKeepsNoSwitchRules() {
+        let noSwitch = rule(bundleIdentifier: "com.apple.Mail", inputSourceID: "-")
+
+        XCTAssertEqual(RuleSet(normalizing: [noSwitch]).rules, [noSwitch])
     }
 
     func testNormalizingKeepsNonEmptyUnavailableInputSource() {
@@ -84,8 +89,11 @@ final class RuleSetTests: XCTestCase {
 
     func testRuleValidationRequiresBothIdentifiers() {
         XCTAssertTrue(RuleSet.isValid(rule(bundleIdentifier: "com.apple.Terminal")))
-        XCTAssertFalse(
+        XCTAssertTrue(
             RuleSet.isValid(rule(bundleIdentifier: "com.apple.Terminal", inputSourceID: "-"))
+        )
+        XCTAssertFalse(
+            RuleSet.isValid(rule(bundleIdentifier: "com.apple.Terminal", inputSourceID: " "))
         )
         XCTAssertFalse(RuleSet.isValid(rule(bundleIdentifier: "-")))
     }

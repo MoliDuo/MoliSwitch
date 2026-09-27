@@ -181,6 +181,7 @@ struct MainWindowView: View {
                         set: { runtime.setInputSourceID($0, for: application) }
                     )
                 ) {
+                    Text(runtime.followDefaultChoiceTitle).tag(AppRuntime.followDefaultInputSourceID)
                     Text("不切换").tag(AppRuntime.noSwitchInputSourceID)
                     Divider()
                     ForEach(runtime.ruleRoleChoices) { choice in
@@ -437,6 +438,29 @@ private struct SettingsPanel: View {
                 Text("输入法")
             } footer: {
                 Text("App 规则里选“中文”或“英文”时，切到这里设置的输入法。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
+                Picker("默认输入法", selection: $runtime.defaultInputSourceSelection) {
+                    Text("不切换").tag(AppRuntime.noSwitchInputSourceID)
+                    Divider()
+                    ForEach(runtime.ruleRoleChoices) { choice in
+                        Text(choice.name).tag(choice.id)
+                    }
+
+                    let otherChoices = runtime.defaultInputSourceChoices
+                    if !otherChoices.isEmpty {
+                        Divider()
+                        ForEach(otherChoices) { choice in
+                            Text(choice.name).tag(choice.id)
+                        }
+                    }
+                }
+            } footer: {
+                Text("列表里设为“默认”的 App 切到这个输入法。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -197,16 +197,16 @@ struct CoreChecks {
             inputSourceID: "com.apple.keylayout.US",
             inputSourceName: "U.S."
         )
-        let placeholder = AppRule(
+        let noSwitch = AppRule(
             bundleIdentifier: "com.apple.Safari",
             applicationName: "Safari",
             inputSourceID: "-",
-            inputSourceName: "-"
+            inputSourceName: "不切换"
         )
 
-        let ruleSet = RuleSet(normalizing: [first, duplicate, blankIdentifier, placeholder])
+        let ruleSet = RuleSet(normalizing: [first, duplicate, blankIdentifier, noSwitch])
 
-        try expectEqual(ruleSet.rules, [first])
+        try expectEqual(ruleSet.rules, [first, noSwitch])
         try expectEqual(ruleSet.rule(forBundleIdentifier: "com.apple.Terminal"), first)
     }
 

@@ -10,8 +10,12 @@ final class AppRuntime: ObservableObject {
     static let chineseInputSourceIDKey = "chineseInputSourceID"
     static let englishInputSourceIDKey = "englishInputSourceID"
     static let terminalSwitchingEnabledKey = "terminalSwitchingEnabled"
+    static let defaultInputSourceIDKey = "defaultInputSourceID"
     /// Settings picker value for "detect the input source automatically".
     static let automaticInputSourceID = ""
+    /// Picker value of an application without a rule, which switches to the
+    /// default input source.
+    static let followDefaultInputSourceID = "default"
     /// Rule values that follow the Chinese or English input source chosen in the
     /// settings instead of naming one input source.
     static let chineseRuleID = "role.chinese"
@@ -92,6 +96,18 @@ final class AppRuntime: ObservableObject {
             adoptRole(Self.englishRuleID, forRulesUsing: previous)
         }
     }
+    /// What applications without a rule switch to: noSwitchInputSourceID, a
+    /// role, or an input source.
+    @Published var defaultInputSourceSelection: String {
+        didSet {
+            guard defaultInputSourceSelection != oldValue else { return }
+            if defaultInputSourceSelection == Self.noSwitchInputSourceID {
+                defaults.removeObject(forKey: Self.defaultInputSourceIDKey)
+            } else {
+                defaults.set(defaultInputSourceSelection, forKey: Self.defaultInputSourceIDKey)
+            }
+        }
+    }
 
     private let store: any RuleStore
     private let commandStore: any CommandRuleStore
@@ -166,6 +182,8 @@ final class AppRuntime: ObservableObject {
             ?? Self.automaticInputSourceID
         self.englishInputSourceSelection = defaults.string(forKey: Self.englishInputSourceIDKey)
             ?? Self.automaticInputSourceID
+        self.defaultInputSourceSelection = defaults.string(forKey: Self.defaultInputSourceIDKey)
+            ?? Self.noSwitchInputSourceID
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
     }
@@ -391,9 +409,30 @@ final class AppRuntime: ObservableObject {
     /// Chinese or English input source is shown as that role.
     func selectedInputSourceID(for application: InstalledApplication) -> String {
         guard let id = ruleSet.rule(forBundleIdentifier: application.bundleIdentifier)?.inputSourceID else {
-            return Self.noSwitchInputSourceID
+            return Self.followDefaultInputSourceID
         }
         return pickerValue(forRuleInputSourceID: id)
+    }
+
+    /// The "默认" picker entry, named after what the default currently does.
+    var followDefaultChoiceTitle: String {
+        "默认（" + defaultInputSourceDescription + "）"
+    }
+
+    private var defaultInputSourceDescription: String {
+        let selection = defaultInputSourceSelection
+        if selection == Self.noSwitchInputSourceID {
+            return "不切换"
+        }
+        if let roleName = Self.roleName(forRuleID: selection) {
+            return roleName
+        }
+        return inputSources.first { $0.id == selection }?.name ?? selection
+    }
+
+    /// Settings entries for the default input source besides "不切换" and the roles.
+    var defaultInputSourceChoices: [InputSourceChoice] {
+        inputSourceChoices(selectedID: defaultInputSourceSelection, savedName: nil)
     }
 
     func selectedInputSourceID(for rule: CommandRule) -> String {
@@ -454,6 +493,7 @@ final class AppRuntime: ObservableObject {
 
         if
             selectedID != Self.noSwitchInputSourceID,
+            selectedID != Self.followDefaultInputSourceID,
             selectedID != Self.chineseRuleID,
             selectedID != Self.englishRuleID,
             !choices.contains(where: { $0.id == selectedID })
@@ -479,8 +519,17 @@ final class AppRuntime: ObservableObject {
 
         var candidate = ruleSet
 
-        if inputSourceID == Self.noSwitchInputSourceID {
+        if inputSourceID == Self.followDefaultInputSourceID {
             candidate.remove(bundleIdentifier: application.bundleIdentifier)
+        } else if inputSourceID == Self.noSwitchInputSourceID {
+            candidate.upsert(
+                AppRule(
+                    bundleIdentifier: application.bundleIdentifier,
+                    applicationName: application.name,
+                    inputSourceID: Self.noSwitchInputSourceID,
+                    inputSourceName: "不切换"
+                )
+            )
         } else if let target = ruleTarget(forPickerValue: inputSourceID) {
             candidate.upsert(
                 AppRule(
@@ -680,12 +729,16 @@ final class AppRuntime: ObservableObject {
     private func adoptRole(_ roleID: String, forRulesUsing previous: InputSource?) {
         guard
             let previous,
-            ruleEditingEnabled,
             let roleName = Self.roleName(forRuleID: roleID)
         else {
             return
         }
 
+        if defaultInputSourceSelection == previous.id {
+            defaultInputSourceSelection = roleID
+        }
+
+        guard ruleEditingEnabled else { return }
         var candidate = ruleSet
         for rule in ruleSet.rules where rule.inputSourceID == previous.id {
             var updated = rule
@@ -889,7 +942,8 @@ final class AppRuntime: ObservableObject {
     }
 
     /// The rule in effect: the command rule for the program in the active
-    /// terminal tab, otherwise the rule of the application.
+    /// terminal tab, otherwise the rule of the application, otherwise the
+    /// default input source.
     private struct ActiveRule {
         /// Identifies the context the rule was chosen for.
         let key: String
@@ -909,6 +963,7 @@ final class AppRuntime: ObservableObject {
         }
 
         if let rule = ruleSet.rule(forBundleIdentifier: app.bundleIdentifier) {
+            guard rule.inputSourceID != Self.noSwitchInputSourceID else { return nil }
             return ActiveRule(
                 key: "app:" + app.bundleIdentifier + tab + "=" + rule.inputSourceID,
                 inputSourceID: rule.inputSourceID,
@@ -916,7 +971,13 @@ final class AppRuntime: ObservableObject {
             )
         }
 
-        return nil
+        let defaultID = defaultInputSourceSelection
+        guard defaultID != Self.noSwitchInputSourceID else { return nil }
+        return ActiveRule(
+            key: "default:" + app.bundleIdentifier + tab + "=" + defaultID,
+            inputSourceID: defaultID,
+            inputSourceName: defaultInputSourceDescription
+        )
     }
 
     private func switchInputSource(to rule: ActiveRule?) {

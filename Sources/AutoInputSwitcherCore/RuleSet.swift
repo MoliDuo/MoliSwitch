@@ -7,7 +7,8 @@ import Foundation
 /// init(normalizing:) when loading from disk so duplicates are collapsed before
 /// they reach the user interface.
 public struct RuleSet: Equatable, Sendable {
-    /// Sentinel used by the user interface to mean "do not switch for this app".
+    /// Saved as a rule's input source to mean "do not switch for this app", so
+    /// the app is also left alone by the default input source.
     public static let noSwitchInputSourceID = "-"
 
     public private(set) var rules: [AppRule]
@@ -32,10 +33,11 @@ public struct RuleSet: Equatable, Sendable {
         self.rules = normalized
     }
 
-    /// A rule is usable only when both identifiers are present and neither is the
-    /// "-" placeholder that the picker uses to mean "no rule".
+    /// A rule is usable only when both identifiers are present. The input source
+    /// may be the "-" sentinel of a "do not switch" rule.
     public static func isValid(_ rule: AppRule) -> Bool {
-        isValidIdentifier(rule.bundleIdentifier) && isValidIdentifier(rule.inputSourceID)
+        isValidIdentifier(rule.bundleIdentifier)
+            && (isValidIdentifier(rule.inputSourceID) || rule.inputSourceID == noSwitchInputSourceID)
     }
 
     public static func isValidIdentifier(_ identifier: String) -> Bool {
