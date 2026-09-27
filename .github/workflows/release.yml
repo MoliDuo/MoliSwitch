@@ -113,8 +113,17 @@ jobs:
           security import "$certificate" -k "$keychain" -P "$CODESIGN_P12_PASSWORD" -T /usr/bin/codesign > /dev/null
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
           rm -f "$certificate"
+          # 只传 --keychain 时，codesign 在 runner 上找不到身份，需把临时钥匙串加入搜索列表。
+          existing_keychains="$(security list-keychains -d user | tr -d '"')"
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$keychain" $existing_keychains
 
           fingerprint="$(grep -Eo '^[0-9a-f]{40}$' Config/CodeSigningCertificate.txt)"
+          security find-identity -p codesigning "$keychain"
+          if ! security find-identity -p codesigning "$keychain" | grep -qi "$fingerprint"; then
+            echo "临时钥匙串里没有指纹为 $fingerprint 的签名身份，请检查 CODESIGN_P12_BASE64 是否对应 Config/CodeSigningCertificate.txt。" >&2
+            exit 1
+          fi
           echo "SIGN_IDENTITY=$fingerprint" >> "$GITHUB_ENV"
           echo "SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           echo "REQUIRE_SIGNING_CERTIFICATE=1" >> "$GITHUB_ENV"
