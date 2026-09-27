@@ -105,6 +105,8 @@ final class FakeInputSourceManager: InputSourceManaging {
 
     private(set) var invalidateCacheCount = 0
     private(set) var selectRequestCount = 0
+    /// Every input source ID passed to selectInputSource, in order.
+    private(set) var selectedIDs: [String] = []
     private(set) var startMonitoringCount = 0
     private(set) var stopMonitoringCount = 0
     /// Bundle identifier per input source ID, for bundleIdentifier(forSourceID:).
@@ -130,6 +132,7 @@ final class FakeInputSourceManager: InputSourceManaging {
 
     func selectInputSource(id: String) -> Bool {
         selectRequestCount += 1
+        selectedIDs.append(id)
 
         guard selectionResult else {
             return false

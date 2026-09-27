@@ -116,6 +116,37 @@ final class VoiceInputRestorerTests: XCTestCase {
         XCTAssertEqual(restorer.handle(.deadlineReached, now: at(10)), [])
     }
 
+    func testSourcesSeenWhileDoubaoSelectsItselfAreNotRestored() {
+        let us = "com.apple.keylayout.US"
+        var restorer = makeRestorer(current: abc)
+
+        // Doubao passes through U.S. twice before it stays selected.
+        _ = restorer.handle(.sourceChanged(id: us), now: at(0))
+        _ = restorer.handle(.sourceChanged(id: doubao), now: at(0.33))
+        _ = restorer.handle(.sourceChanged(id: us), now: at(0.5))
+        _ = restorer.handle(.sourceChanged(id: doubao), now: at(0.94))
+        XCTAssertEqual(restorer.phase, .armed(previous: abc))
+
+        _ = restorer.handle(.microphone(running: true), now: at(1.3))
+        _ = restorer.handle(.microphone(running: false), now: at(5))
+        _ = restorer.handle(.overlay(visible: false), now: at(5.6))
+        XCTAssertEqual(
+            restorer.handle(.deadlineReached, now: at(5.9)),
+            [.stopOverlayWatch, .restore(sourceID: abc)]
+        )
+    }
+
+    func testSourceKeptForAWhileBeforeSpeakingIsRestored() {
+        let us = "com.apple.keylayout.US"
+        var restorer = makeRestorer(current: abc)
+
+        _ = restorer.handle(.sourceChanged(id: us), now: at(0))
+        _ = restorer.handle(.sourceChanged(id: doubao), now: at(20))
+
+        XCTAssertEqual(restorer.phase, .armed(previous: us))
+        XCTAssertEqual(restorer.settledNormalSourceID, us)
+    }
+
     func testMissedSelectionNotificationStillRestores() {
         var restorer = makeRestorer(current: abc)
 

@@ -47,6 +47,44 @@ final class AppRuntimeVoiceRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRestoringAKeyboardLayoutSelectsTheChineseInputMethodFirst() async {
+        let fixture = makeFixture(
+            sources: [TestInputSources.us, TestInputSources.shuangpin, TestInputSources.doubao],
+            current: TestInputSources.us
+        )
+        fixture.runtime.startVoiceRestore()
+
+        speak(in: fixture)
+        fixture.overlay.simulate(visible: false)
+
+        await waitUntil { !fixture.inputSources.selectedIDs.isEmpty }
+
+        // Caps Lock then returns to Shuangpin instead of Doubao.
+        XCTAssertEqual(
+            fixture.inputSources.selectedIDs,
+            [TestInputSources.shuangpin.id, TestInputSources.us.id]
+        )
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
+        XCTAssertEqual(fixture.runtime.switchCount, 1)
+    }
+
+    @MainActor
+    func testRestoringAnInputMethodSelectsOnlyIt() async {
+        let fixture = makeFixture(
+            sources: [TestInputSources.us, TestInputSources.shuangpin, TestInputSources.doubao],
+            current: TestInputSources.shuangpin
+        )
+        fixture.runtime.startVoiceRestore()
+
+        speak(in: fixture)
+        fixture.overlay.simulate(visible: false)
+
+        await waitUntil { !fixture.inputSources.selectedIDs.isEmpty }
+
+        XCTAssertEqual(fixture.inputSources.selectedIDs, [TestInputSources.shuangpin.id])
+    }
+
+    @MainActor
     func testOverlayTimeoutStillRestores() async {
         let fixture = makeVoiceFixture()
 

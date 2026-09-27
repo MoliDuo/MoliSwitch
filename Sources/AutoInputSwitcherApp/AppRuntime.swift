@@ -1172,6 +1172,16 @@ final class AppRuntime: ObservableObject {
     private func perform(_ action: VoiceInputRestorer.Action) {
         switch action {
         case .restore(let sourceID):
+            // Caps Lock toggles between the keyboard layout and the input method
+            // used last, which would be the voice input method now. Selecting the
+            // Chinese input method first makes Caps Lock return to it instead.
+            if
+                Self.isKeyboardLayout(sourceID),
+                let chineseID = effectiveChineseInputSource?.id,
+                chineseID != effectiveVoiceInputSource?.id
+            {
+                _ = inputSourceManager.selectInputSource(id: chineseID)
+            }
             if inputSourceManager.selectInputSource(id: sourceID) {
                 switchCounter.recordSwitch()
                 switchCount = switchCounter.count

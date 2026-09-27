@@ -14,15 +14,21 @@ public struct VoiceInputRestorer: Sendable {
         /// Upper bound after the microphone stops, for overlays that are never
         /// detected as hidden.
         public var overlayTimeout: TimeInterval
+        /// How long an input source must stay selected to count as the one the
+        /// user was typing with. Doubao passes through other input sources for a
+        /// moment while it selects itself.
+        public var transientSourceDuration: TimeInterval
 
         public init(
             voiceSourceID: String,
             settleDelay: TimeInterval = 0.3,
-            overlayTimeout: TimeInterval = 8
+            overlayTimeout: TimeInterval = 8,
+            transientSourceDuration: TimeInterval = 1
         ) {
             self.voiceSourceID = voiceSourceID
             self.settleDelay = settleDelay
             self.overlayTimeout = overlayTimeout
+            self.transientSourceDuration = transientSourceDuration
         }
     }
 
@@ -57,6 +63,10 @@ public struct VoiceInputRestorer: Sendable {
     public private(set) var phase: Phase = .idle
     /// The most recent input source that was not the voice input source.
     public private(set) var lastNormalSourceID: String?
+    private var lastNormalSelectedAt: Date?
+    /// The most recent input source that was not the voice input source and
+    /// stayed selected longer than a moment: the one a session returns to.
+    public private(set) var settledNormalSourceID: String?
     private var currentSourceID: String?
 
     public init(configuration: Configuration, currentSourceID: String?) {
@@ -64,15 +74,17 @@ public struct VoiceInputRestorer: Sendable {
         self.currentSourceID = currentSourceID
         if let currentSourceID, currentSourceID != configuration.voiceSourceID {
             lastNormalSourceID = currentSourceID
+            lastNormalSelectedAt = .distantPast
+            settledNormalSourceID = currentSourceID
         }
     }
 
     public mutating func handle(_ event: Event, now: Date) -> [Action] {
         switch event {
         case .sourceChanged(let id):
-            return handleSourceChanged(id)
+            return handleSourceChanged(id, now: now)
         case .microphone(let running):
-            return running ? handleMicrophoneStarted() : handleMicrophoneStopped(now: now)
+            return running ? handleMicrophoneStarted(now: now) : handleMicrophoneStopped(now: now)
         case .overlay(let visible):
             return handleOverlay(visible: visible, now: now)
         case .deadlineReached:
@@ -87,17 +99,19 @@ public struct VoiceInputRestorer: Sendable {
 
     // MARK: - Transitions
 
-    private mutating func handleSourceChanged(_ id: String?) -> [Action] {
+    private mutating func handleSourceChanged(_ id: String?, now: Date) -> [Action] {
+        settleNormalSource(now: now)
         currentSourceID = id
 
         if id == configuration.voiceSourceID {
             guard phase == .idle else { return [] }
-            phase = .armed(previous: lastNormalSourceID)
+            phase = .armed(previous: settledNormalSourceID)
             return [.captureOverlayBaseline]
         }
 
         if let id {
             lastNormalSourceID = id
+            lastNormalSelectedAt = now
         }
 
         // Leaving the voice input source by any means ends the session: the user,
@@ -107,13 +121,14 @@ public struct VoiceInputRestorer: Sendable {
         return actions
     }
 
-    private mutating func handleMicrophoneStarted() -> [Action] {
+    private mutating func handleMicrophoneStarted(now: Date) -> [Action] {
         switch phase {
         case .idle:
             // The selection notification may have been missed; the current source
             // still tells us that the voice input source is recording.
             guard currentSourceID == configuration.voiceSourceID else { return [] }
-            phase = .recording(previous: lastNormalSourceID)
+            settleNormalSource(now: now)
+            phase = .recording(previous: settledNormalSourceID)
             return [.captureOverlayBaseline]
         case .armed(let previous):
             phase = .recording(previous: previous)
@@ -163,6 +178,22 @@ public struct VoiceInputRestorer: Sendable {
             actions.append(.restore(sourceID: previous))
         }
         return actions
+    }
+
+    /// Remembers the current input source as settled once it has stayed
+    /// selected long enough.
+    private mutating func settleNormalSource(now: Date) {
+        guard
+            let id = currentSourceID,
+            id != configuration.voiceSourceID,
+            id == lastNormalSourceID,
+            let selectedAt = lastNormalSelectedAt,
+            now.timeIntervalSince(selectedAt) >= configuration.transientSourceDuration
+        else {
+            return
+        }
+
+        settledNormalSourceID = id
     }
 
     private func endSession() -> [Action] {
