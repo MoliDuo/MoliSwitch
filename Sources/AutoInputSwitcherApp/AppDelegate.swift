@@ -5,7 +5,7 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSMenuItemValidation {
-    private static let appName = "AutoInputSwitcher"
+    private static let appName = AppInfo.name
     private static let windowFrameName = "MainWindow"
     /// Launches this soon after boot with launch at login turned on are treated
     /// as login item launches when the system did not mark them as such.
@@ -157,8 +157,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 return
             }
 
-            let controller = NSHostingController(rootView: MainWindowView(runtime: runtime) { NSApp.terminate(nil) })
-            controller.sceneBridgingOptions = [.toolbars]
+            let controller = NSHostingController(rootView: MainWindowView(runtime: runtime))
+            controller.sceneBridgingOptions = [.toolbars, .title]
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
