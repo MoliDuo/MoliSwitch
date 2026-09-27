@@ -114,3 +114,62 @@ final class AppRuntimeInputRoleTests: XCTestCase {
         XCTAssertEqual(fixture.runtime.ruleRoleChoices.first?.name, "中文（未设置）")
     }
 }
+
+final class ChineseInputSourceDetectionTests: XCTestCase {
+    private let wetype = InputSource(id: "com.tencent.inputmethod.wetype.pinyin", name: "微信输入法")
+    private let sogou = InputSource(id: "com.sogou.inputmethod.sogou.pinyin", name: "搜狗拼音")
+
+    @MainActor
+    func testAppleChineseInputMethodIsPreferredOverThirdPartyOnes() async {
+        // Third-party names sort before "Shuangpin", which used to decide the result.
+        let fixture = makeFixture(
+            sources: [TestInputSources.us, TestInputSources.shuangpin, wetype, sogou],
+            current: TestInputSources.us
+        )
+
+        XCTAssertEqual(fixture.runtime.detectedChineseInputSource, TestInputSources.shuangpin)
+    }
+
+    @MainActor
+    func testThirdPartyInputMethodIsDetectedWithoutAnAppleOne() async {
+        let fixture = makeFixture(
+            sources: [TestInputSources.us, wetype],
+            current: TestInputSources.us
+        )
+
+        XCTAssertEqual(fixture.runtime.detectedChineseInputSource, wetype)
+
+        fixture.runtime.setInputSourceID(
+            AppRuntime.chineseRuleID,
+            for: makeInstalledApplication("Terminal", "com.apple.Terminal")
+        )
+        fixture.runtime.applyRuleIfNeeded(
+            for: RunningApplicationInfo(bundleIdentifier: "com.apple.Terminal", name: "Terminal")
+        )
+
+        XCTAssertEqual(fixture.inputSources.current, wetype)
+    }
+
+    @MainActor
+    func testRejectedSwitchIsReported() async {
+        let fixture = makeFixture(
+            rules: [
+                makeRule(
+                    bundleIdentifier: "com.apple.Terminal",
+                    inputSourceID: TestInputSources.abc.id,
+                    inputSourceName: TestInputSources.abc.name
+                ),
+            ],
+            current: TestInputSources.us
+        )
+        fixture.inputSources.selectionResult = false
+
+        fixture.runtime.applyRuleIfNeeded(
+            for: RunningApplicationInfo(bundleIdentifier: "com.apple.Terminal", name: "Terminal")
+        )
+
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
+        XCTAssertEqual(fixture.runtime.inputSourceStatus?.severity, .warning)
+        XCTAssertEqual(fixture.runtime.switchCount, 0)
+    }
+}

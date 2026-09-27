@@ -663,11 +663,24 @@ final class AppRuntime: ObservableObject {
         resolveInputSource(chineseInputSourceSelection) { detectedChineseInputSource }
     }
 
-    /// The first input method that is neither a keyboard layout nor the voice
-    /// input source, for example Shuangpin.
+    /// An input method that is neither a keyboard layout nor the voice input
+    /// source, for example Shuangpin. Apple's own Chinese input methods come
+    /// first so that the result does not depend on how third-party input
+    /// methods such as 微信键盘 or 搜狗 happen to be named.
     var detectedChineseInputSource: InputSource? {
         let voiceID = effectiveVoiceInputSource?.id
-        return inputSources.first { !Self.isKeyboardLayout($0.id) && $0.id != voiceID }
+        let candidates = inputSources.filter { !Self.isKeyboardLayout($0.id) && $0.id != voiceID }
+        return candidates.first(where: { Self.isAppleChineseInputMethod($0.id) }) ?? candidates.first
+    }
+
+    private static let appleChineseInputMethodPrefixes = [
+        "com.apple.inputmethod.SCIM",
+        "com.apple.inputmethod.TCIM",
+        "com.apple.inputmethod.TYIM",
+    ]
+
+    private static func isAppleChineseInputMethod(_ id: String) -> Bool {
+        appleChineseInputMethodPrefixes.contains { id.hasPrefix($0) }
     }
 
     var effectiveEnglishInputSource: InputSource? {

@@ -128,7 +128,15 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
             return false
         }
 
-        return TISSelectInputSource(source) == noErr
+        guard TISSelectInputSource(source) == noErr else {
+            return false
+        }
+
+        // Some input methods accept the call without becoming current, for
+        // example while they are being disabled. On this machine the switch to
+        // third-party input methods (豆包) took effect for the frontmost text
+        // field as well, so no retry is attempted; a mismatch is reported.
+        return currentInputSource()?.id == id
     }
 
     private func computeAvailableInputSources() -> [InputSource] {

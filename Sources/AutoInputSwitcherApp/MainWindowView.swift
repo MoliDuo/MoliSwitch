@@ -437,7 +437,7 @@ private struct SettingsPanel: View {
             } header: {
                 Text("输入法")
             } footer: {
-                Text("App 规则里选“中文”或“英文”时，切到这里设置的输入法。")
+                Text("App 规则里选“中文”或“英文”时，切到这里设置的输入法。看不到你的输入法（比如微信键盘、搜狗）？先在 系统设置 › 键盘 › 输入法 中添加。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
