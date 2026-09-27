@@ -75,7 +75,7 @@ check_contains() {
     local needle="$2"
     shift 2
 
-    if "$@" 2>/dev/null | grep -qF -- "$needle"; then
+    if "$@" 2>/dev/null | grep -F -- "$needle" > /dev/null; then
         pass "$description"
     else
         fail "$description"
@@ -106,7 +106,7 @@ check_no_build_paths() {
     local description="$1"
     local binary="$2"
 
-    if otool -l "$binary" 2>/dev/null | grep -q '\.build'; then
+    if otool -l "$binary" 2>/dev/null | grep '\.build' > /dev/null; then
         fail "$description"
     else
         pass "$description"

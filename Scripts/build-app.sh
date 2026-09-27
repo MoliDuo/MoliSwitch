@@ -255,11 +255,11 @@ while IFS= read -r rpath; do
     esac
 done < <(rpath_list "$BINARY_PATH")
 
-if ! rpath_list "$BINARY_PATH" | grep -qx '@executable_path/../Frameworks'; then
+if ! rpath_list "$BINARY_PATH" | grep -x '@executable_path/../Frameworks' > /dev/null; then
     install_name_tool -add_rpath '@executable_path/../Frameworks' "$BINARY_PATH"
 fi
 
-otool -L "$BINARY_PATH" | grep -q 'Sparkle.framework' \
+otool -L "$BINARY_PATH" | grep 'Sparkle.framework' > /dev/null \
     || fail "可执行文件没有链接 Sparkle.framework"
 
 # ------------------------------------------------------------------- 签名 --
