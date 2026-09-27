@@ -32,7 +32,8 @@ final class ApplicationScannerTests: XCTestCase {
     private func makeApplicationBundle(
         in root: URL,
         name: String,
-        bundleIdentifier: String
+        bundleIdentifier: String,
+        extraInfo: [String: Any] = [:]
     ) throws {
         let contents = root
             .appendingPathComponent(name + ".app", isDirectory: true)
@@ -48,7 +49,7 @@ final class ApplicationScannerTests: XCTestCase {
             "CFBundleDisplayName": name,
             "CFBundlePackageType": "APPL",
             "CFBundleExecutable": name
-        ]
+        ].merging(extraInfo) { _, extra in extra }
         let data = try PropertyListSerialization.data(
             fromPropertyList: plist,
             format: .xml,
@@ -231,6 +232,49 @@ final class ApplicationScannerTests: XCTestCase {
     }
 
     // MARK: - Result classification
+
+    func testBackgroundHelpersAreSkipped() throws {
+        try withTemporaryDirectory { root in
+            try makeApplicationBundle(in: root, name: "Editor", bundleIdentifier: "com.example.editor")
+            try makeApplicationBundle(
+                in: root,
+                name: "Snipper",
+                bundleIdentifier: "com.example.snipper",
+                extraInfo: ["LSUIElement": true, "CFBundleIconName": "AppIcon"]
+            )
+            try makeApplicationBundle(
+                in: root,
+                name: "Forwarder",
+                bundleIdentifier: "com.example.forwarder",
+                extraInfo: ["LSBackgroundOnly": true, "CFBundleIconFile": "AppIcon"]
+            )
+            try makeApplicationBundle(
+                in: root,
+                name: "Agent",
+                bundleIdentifier: "com.example.agent",
+                extraInfo: ["LSUIElement": "1"]
+            )
+
+            let result = InstalledApplicationScanner(roots: [root]).scan()
+
+            XCTAssertEqual(result.applications.map(\.bundleIdentifier), ["com.example.editor", "com.example.snipper"])
+        }
+    }
+
+    func testInvisibleDisplayNameFallsBackToTheBundleName() throws {
+        try withTemporaryDirectory { root in
+            try makeApplicationBundle(
+                in: root,
+                name: "MediaHelper",
+                bundleIdentifier: "com.example.media",
+                extraInfo: ["CFBundleDisplayName": "\u{200E}"]
+            )
+
+            let result = InstalledApplicationScanner(roots: [root]).scan()
+
+            XCTAssertEqual(result.applications.map(\.name), ["MediaHelper"])
+        }
+    }
 
     func testResultClassification() {
         let root = URL(fileURLWithPath: "/Applications", isDirectory: true)

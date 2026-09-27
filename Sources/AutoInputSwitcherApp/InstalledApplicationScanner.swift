@@ -132,13 +132,18 @@ struct InstalledApplicationScanner: ApplicationScanning {
         guard
             let bundle = Bundle(url: url),
             let bundleIdentifier = bundle.bundleIdentifier,
-            !bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            !Self.isBackgroundHelper(bundle)
         else {
             return nil
         }
 
-        let name = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-            ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
+        let name = [
+            bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+            bundle.object(forInfoDictionaryKey: "CFBundleName") as? String,
+        ]
+        .compactMap { $0.map(Self.visibleName) }
+        .first { !$0.isEmpty }
             ?? url.deletingPathExtension().lastPathComponent
 
         return InstalledApplication(
@@ -146,5 +151,39 @@ struct InstalledApplicationScanner: ApplicationScanning {
             bundleIdentifier: bundleIdentifier,
             url: url
         )
+    }
+
+    /// Background-only programs, and agents without a Dock icon that have no
+    /// icon of their own, such as the system's MediaRemoteUI. Nobody types in
+    /// them, so they only clutter the list.
+    static func isBackgroundHelper(_ bundle: Bundle) -> Bool {
+        if boolValue(bundle.object(forInfoDictionaryKey: "LSBackgroundOnly")) {
+            return true
+        }
+
+        let hasIcon = ["CFBundleIconFile", "CFBundleIconName"].contains { key in
+            (bundle.object(forInfoDictionaryKey: key) as? String).map { !visibleName($0).isEmpty } ?? false
+        }
+        return boolValue(bundle.object(forInfoDictionaryKey: "LSUIElement")) && !hasIcon
+    }
+
+    /// Info.plist booleans appear as real booleans, numbers or strings like "1".
+    private static func boolValue(_ value: Any?) -> Bool {
+        switch value {
+        case let bool as Bool:
+            return bool
+        case let number as NSNumber:
+            return number.boolValue
+        case let string as String:
+            return ["1", "true", "yes"].contains(string.lowercased())
+        default:
+            return false
+        }
+    }
+
+    /// Removes whitespace and invisible format characters: some system bundles
+    /// use a lone left-to-right mark as their display name.
+    private static func visibleName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters))
     }
 }
