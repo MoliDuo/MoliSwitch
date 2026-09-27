@@ -10,13 +10,45 @@ public protocol RuleStore: Sendable {
     func save(_ rules: [AppRule]) throws
 }
 
+/// Persistence boundary for the rules of programs running in a terminal.
+public protocol CommandRuleStore: Sendable {
+    var url: URL { get }
+    func load() throws -> [CommandRule]
+    func save(_ rules: [CommandRule]) throws
+}
+
+public typealias JSONRuleStore = JSONFileStore<AppRule>
+public typealias JSONCommandRuleStore = JSONFileStore<CommandRule>
+
+extension JSONFileStore: RuleStore where Element == AppRule {
+    public static func applicationSupportStore(
+        appName: String = "AutoInputSwitcher"
+    ) -> JSONRuleStore {
+        JSONRuleStore(
+            url: applicationSupportDirectory(appName: appName)
+                .appendingPathComponent("rules.json")
+        )
+    }
+}
+
+extension JSONFileStore: CommandRuleStore where Element == CommandRule {
+    public static func applicationSupportStore(
+        appName: String = "AutoInputSwitcher"
+    ) -> JSONCommandRuleStore {
+        JSONCommandRuleStore(
+            url: applicationSupportDirectory(appName: appName)
+                .appendingPathComponent("command-rules.json")
+        )
+    }
+}
+
 /// Stores rules as a JSON array in a single file.
 ///
 /// load() only returns an empty array when the file genuinely does not exist.
 /// Every other failure (unreadable file, malformed JSON, permission problems)
 /// is surfaced as a thrown error, so a broken file is never mistaken for an
 /// empty rule set that would then be written back over the user's data.
-public struct JSONRuleStore: RuleStore {
+public struct JSONFileStore<Element: Codable & Sendable>: Sendable {
     public let url: URL
 
     public init(url: URL) {
@@ -34,20 +66,11 @@ public struct JSONRuleStore: RuleStore {
         return baseURL.appendingPathComponent(appName, isDirectory: true)
     }
 
-    public static func applicationSupportStore(
-        appName: String = "AutoInputSwitcher"
-    ) -> JSONRuleStore {
-        JSONRuleStore(
-            url: applicationSupportDirectory(appName: appName)
-                .appendingPathComponent("rules.json")
-        )
-    }
-
     public var fileExists: Bool {
         FileManager.default.fileExists(atPath: url.path)
     }
 
-    public func load() throws -> [AppRule] {
+    public func load() throws -> [Element] {
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -58,10 +81,10 @@ public struct JSONRuleStore: RuleStore {
             throw error
         }
 
-        return try Self.makeDecoder().decode([AppRule].self, from: data)
+        return try Self.makeDecoder().decode([Element].self, from: data)
     }
 
-    public func save(_ rules: [AppRule]) throws {
+    public func save(_ rules: [Element]) throws {
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(
             at: directory,

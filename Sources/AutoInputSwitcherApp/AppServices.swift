@@ -51,3 +51,10 @@ protocol LoginItemManaging: AnyObject {
 protocol ApplicationScanning: Sendable {
     func scan() -> ApplicationScanResult
 }
+
+/// Finds the program running in the foreground of a terminal's active tab.
+@MainActor
+protocol TerminalContextProviding: AnyObject {
+    func supportsTerminal(bundleIdentifier: String) -> Bool
+    func foregroundContext(bundleIdentifier: String) -> TerminalContextResult
+}

@@ -7,8 +7,15 @@ final class AppRuntime: ObservableObject {
     static let showMenuBarIconKey = "showMenuBarIcon"
     static let voiceRestoreEnabledKey = "voiceRestoreEnabled"
     static let voiceInputSourceIDKey = "voiceInputSourceID"
-    /// Picker value for "detect the voice input source automatically".
-    static let automaticVoiceInputSourceID = ""
+    static let chineseInputSourceIDKey = "chineseInputSourceID"
+    static let englishInputSourceIDKey = "englishInputSourceID"
+    static let terminalSwitchingEnabledKey = "terminalSwitchingEnabled"
+    /// Settings picker value for "detect the input source automatically".
+    static let automaticInputSourceID = ""
+    /// Rule values that follow the Chinese or English input source chosen in the
+    /// settings instead of naming one input source.
+    static let chineseRuleID = "role.chinese"
+    static let englishRuleID = "role.english"
 
     static var noSwitchInputSourceID: String {
         RuleSet.noSwitchInputSourceID
@@ -19,6 +26,12 @@ final class AppRuntime: ObservableObject {
     @Published private(set) var installedApplications: [InstalledApplication] = []
     @Published private(set) var inputSources: [InputSource] = []
     @Published private(set) var ruleSet = RuleSet()
+    @Published private(set) var commandRuleSet = CommandRuleSet()
+    @Published private(set) var commandRuleEditingEnabled = true
+    /// The program most recently seen in the foreground of a terminal tab.
+    @Published private(set) var lastTerminalContext: TerminalContext?
+    /// True when the user did not allow reading the terminal's active tab.
+    @Published private(set) var terminalAccessDenied = false
     @Published private(set) var switchCount = 0
     @Published private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .notRegistered
     @Published private(set) var isScanning = false
@@ -45,20 +58,45 @@ final class AppRuntime: ObservableObject {
             reconfigureVoiceRestore()
         }
     }
-    /// The chosen voice input source, or automaticVoiceInputSourceID.
+    /// Whether command rules apply in Terminal and iTerm2.
+    @Published var terminalSwitchingEnabled: Bool {
+        didSet {
+            guard terminalSwitchingEnabled != oldValue else { return }
+            defaults.set(terminalSwitchingEnabled, forKey: Self.terminalSwitchingEnabledKey)
+            updateTerminalPolling(for: currentApplication)
+        }
+    }
+    /// The chosen voice input source, or automaticInputSourceID.
     @Published var voiceInputSourceSelection: String {
         didSet {
             guard voiceInputSourceSelection != oldValue else { return }
-            if voiceInputSourceSelection == Self.automaticVoiceInputSourceID {
-                defaults.removeObject(forKey: Self.voiceInputSourceIDKey)
-            } else {
-                defaults.set(voiceInputSourceSelection, forKey: Self.voiceInputSourceIDKey)
-            }
+            persistSelection(voiceInputSourceSelection, forKey: Self.voiceInputSourceIDKey)
             reconfigureVoiceRestore()
+        }
+    }
+    /// The chosen Chinese input source, or automaticInputSourceID.
+    @Published var chineseInputSourceSelection: String {
+        didSet {
+            guard chineseInputSourceSelection != oldValue else { return }
+            let previous = resolveInputSource(oldValue) { detectedChineseInputSource }
+            persistSelection(chineseInputSourceSelection, forKey: Self.chineseInputSourceIDKey)
+            adoptRole(Self.chineseRuleID, forRulesUsing: previous)
+        }
+    }
+    /// The chosen English input source, or automaticInputSourceID.
+    @Published var englishInputSourceSelection: String {
+        didSet {
+            guard englishInputSourceSelection != oldValue else { return }
+            let previous = resolveInputSource(oldValue) { detectedEnglishInputSource }
+            persistSelection(englishInputSourceSelection, forKey: Self.englishInputSourceIDKey)
+            adoptRole(Self.englishRuleID, forRulesUsing: previous)
         }
     }
 
     private let store: any RuleStore
+    private let commandStore: any CommandRuleStore
+    private let terminalContextProvider: any TerminalContextProviding
+    private let terminalPollInterval: TimeInterval
     private let inputSourceManager: any InputSourceManaging
     private let applicationScanner: any ApplicationScanning
     private let loginItemManager: any LoginItemManaging
@@ -81,8 +119,17 @@ final class AppRuntime: ObservableObject {
     private var voiceBundleIdentifier: String?
     private var voiceDeadlineTask: Task<Void, Never>?
 
+    private var terminalPollTask: Task<Void, Never>?
+    private var polledApplication: RunningApplicationInfo?
+    /// Key of the rule applied last, so a rule is applied once per context and a
+    /// manual switch inside the same program is kept.
+    private var appliedRuleKey: String?
+
     init(
         store: any RuleStore = JSONRuleStore.applicationSupportStore(),
+        commandStore: any CommandRuleStore = JSONCommandRuleStore.applicationSupportStore(),
+        terminalContextProvider: any TerminalContextProviding = SystemTerminalContextProvider(),
+        terminalPollInterval: TimeInterval = 0.5,
         inputSourceManager: any InputSourceManaging = SystemInputSourceManager(),
         applicationScanner: any ApplicationScanning = InstalledApplicationScanner(),
         loginItemManager: any LoginItemManaging = SystemLoginItemManager(),
@@ -96,6 +143,9 @@ final class AppRuntime: ObservableObject {
         ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) {
         self.store = store
+        self.commandStore = commandStore
+        self.terminalContextProvider = terminalContextProvider
+        self.terminalPollInterval = terminalPollInterval
         self.inputSourceManager = inputSourceManager
         self.applicationScanner = applicationScanner
         self.loginItemManager = loginItemManager
@@ -109,8 +159,13 @@ final class AppRuntime: ObservableObject {
         self.ownBundleIdentifier = ownBundleIdentifier
         self.showMenuBarIcon = defaults.object(forKey: Self.showMenuBarIconKey) as? Bool ?? true
         self.voiceRestoreEnabled = defaults.object(forKey: Self.voiceRestoreEnabledKey) as? Bool ?? true
+        self.terminalSwitchingEnabled = defaults.object(forKey: Self.terminalSwitchingEnabledKey) as? Bool ?? true
         self.voiceInputSourceSelection = defaults.string(forKey: Self.voiceInputSourceIDKey)
-            ?? Self.automaticVoiceInputSourceID
+            ?? Self.automaticInputSourceID
+        self.chineseInputSourceSelection = defaults.string(forKey: Self.chineseInputSourceIDKey)
+            ?? Self.automaticInputSourceID
+        self.englishInputSourceSelection = defaults.string(forKey: Self.englishInputSourceIDKey)
+            ?? Self.automaticInputSourceID
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
     }
@@ -144,6 +199,7 @@ final class AppRuntime: ObservableObject {
         }
 
         inputSourceManager.stopMonitoringEnabledSources()
+        stopTerminalPolling()
         stopVoiceRestore()
         updateController?.stop()
     }
@@ -153,7 +209,7 @@ final class AppRuntime: ObservableObject {
     /// True when the rule file exists but could not be read, so editing is paused
     /// and the original file is left untouched.
     var hasStorageFailure: Bool {
-        !ruleEditingEnabled
+        !ruleEditingEnabled || !commandRuleEditingEnabled
     }
 
     func reloadRulesFromDisk() {
@@ -177,11 +233,29 @@ final class AppRuntime: ObservableObject {
             // could not read.
             ruleEditingEnabled = false
             storageStatus = .rulesReadFailure
+            loadCommandRules()
+            return
+        }
+
+        if !loadCommandRules() {
+            storageStatus = .commandRulesReadFailure
+        }
+    }
+
+    @discardableResult
+    private func loadCommandRules() -> Bool {
+        do {
+            commandRuleSet = CommandRuleSet(normalizing: try commandStore.load())
+            commandRuleEditingEnabled = true
+            return true
+        } catch {
+            commandRuleEditingEnabled = false
+            return false
         }
     }
 
     func revealRulesFileInFinder() {
-        let url = store.url
+        let url = !ruleEditingEnabled || commandRuleEditingEnabled ? store.url : commandStore.url
         let fileManager = FileManager.default
 
         if fileManager.fileExists(atPath: url.path) {
@@ -313,25 +387,78 @@ final class AppRuntime: ObservableObject {
         reconfigureVoiceRestore()
     }
 
+    /// The picker value for one application. A rule that names the current
+    /// Chinese or English input source is shown as that role.
     func selectedInputSourceID(for application: InstalledApplication) -> String {
-        ruleSet.rule(forBundleIdentifier: application.bundleIdentifier)?.inputSourceID
-            ?? Self.noSwitchInputSourceID
+        guard let id = ruleSet.rule(forBundleIdentifier: application.bundleIdentifier)?.inputSourceID else {
+            return Self.noSwitchInputSourceID
+        }
+        return pickerValue(forRuleInputSourceID: id)
     }
 
-    /// Picker entries for one application, including the saved input source when
-    /// it is no longer installed, so a rule is never silently rewritten.
+    func selectedInputSourceID(for rule: CommandRule) -> String {
+        pickerValue(forRuleInputSourceID: rule.inputSourceID)
+    }
+
+    private func pickerValue(forRuleInputSourceID id: String) -> String {
+        if id == effectiveChineseInputSource?.id {
+            return Self.chineseRuleID
+        }
+        if id == effectiveEnglishInputSource?.id {
+            return Self.englishRuleID
+        }
+        return id
+    }
+
+    /// The "中文" and "英文" picker entries, named after the input sources they
+    /// currently stand for.
+    var ruleRoleChoices: [InputSourceChoice] {
+        [
+            InputSourceChoice(
+                id: Self.chineseRuleID,
+                name: Self.roleTitle("中文", effectiveChineseInputSource)
+            ),
+            InputSourceChoice(
+                id: Self.englishRuleID,
+                name: Self.roleTitle("英文", effectiveEnglishInputSource)
+            ),
+        ]
+    }
+
+    private static func roleTitle(_ role: String, _ source: InputSource?) -> String {
+        role + "（" + (source?.name ?? "未设置") + "）"
+    }
+
+    /// Picker entries besides the roles, including the saved input source when
+    /// it is no longer installed, so a rule is never silently rewritten. The
+    /// Chinese and English input sources are offered through their roles, and
+    /// while voice restore is on, the voice input source is offered only to a
+    /// rule that already uses it.
     func inputSourceChoices(for application: InstalledApplication) -> [InputSourceChoice] {
-        var choices = inputSources.map { InputSourceChoice(id: $0.id, name: $0.name) }
-        let selectedID = selectedInputSourceID(for: application)
+        inputSourceChoices(
+            selectedID: selectedInputSourceID(for: application),
+            savedName: ruleSet.rule(forBundleIdentifier: application.bundleIdentifier)?.inputSourceName
+        )
+    }
+
+    func inputSourceChoices(for rule: CommandRule) -> [InputSourceChoice] {
+        inputSourceChoices(selectedID: selectedInputSourceID(for: rule), savedName: rule.inputSourceName)
+    }
+
+    private func inputSourceChoices(selectedID: String, savedName: String?) -> [InputSourceChoice] {
+        let voiceID = voiceRestoreEnabled ? effectiveVoiceInputSource?.id : nil
+        let hiddenIDs = Set([effectiveChineseInputSource?.id, effectiveEnglishInputSource?.id, voiceID].compactMap { $0 })
+        var choices = inputSources
+            .filter { !hiddenIDs.contains($0.id) || $0.id == selectedID }
+            .map { InputSourceChoice(id: $0.id, name: $0.name) }
 
         if
             selectedID != Self.noSwitchInputSourceID,
+            selectedID != Self.chineseRuleID,
+            selectedID != Self.englishRuleID,
             !choices.contains(where: { $0.id == selectedID })
         {
-            let savedName = ruleSet
-                .rule(forBundleIdentifier: application.bundleIdentifier)?
-                .inputSourceName
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let savedName = savedName?.trimmingCharacters(in: .whitespacesAndNewlines)
             let displayName = (savedName?.isEmpty == false) ? savedName! : selectedID
 
             choices.append(
@@ -354,13 +481,13 @@ final class AppRuntime: ObservableObject {
 
         if inputSourceID == Self.noSwitchInputSourceID {
             candidate.remove(bundleIdentifier: application.bundleIdentifier)
-        } else if let inputSource = inputSources.first(where: { $0.id == inputSourceID }) {
+        } else if let target = ruleTarget(forPickerValue: inputSourceID) {
             candidate.upsert(
                 AppRule(
                     bundleIdentifier: application.bundleIdentifier,
                     applicationName: application.name,
-                    inputSourceID: inputSource.id,
-                    inputSourceName: inputSource.name
+                    inputSourceID: target.id,
+                    inputSourceName: target.name
                 )
             )
         } else if
@@ -380,12 +507,207 @@ final class AppRuntime: ObservableObject {
 
         guard candidate != ruleSet else { return }
 
+        commit(candidate)
+    }
+
+    private func commit(_ candidate: RuleSet) {
         do {
             try store.save(candidate.rules)
             ruleSet = candidate
             storageStatus = .rulesSaved
         } catch {
             storageStatus = .rulesSaveFailure
+        }
+    }
+
+    /// The identifier and name a rule saves for a picker value: a role, or an
+    /// installed input source.
+    private func ruleTarget(forPickerValue value: String) -> (id: String, name: String)? {
+        if let roleName = Self.roleName(forRuleID: value) {
+            return (value, roleName)
+        }
+        if let inputSource = inputSources.first(where: { $0.id == value }) {
+            return (inputSource.id, inputSource.name)
+        }
+        return nil
+    }
+
+    // MARK: - Command rules
+
+    /// Adds a rule for a program in the terminal. Returns false when the name is
+    /// empty or the program already has a rule.
+    @discardableResult
+    func addCommandRule(_ command: String, inputSourceID: String = AppRuntime.chineseRuleID) -> Bool {
+        guard commandRuleEditingEnabled else {
+            storageStatus = .commandRulesReadFailure
+            return false
+        }
+
+        let name = CommandRuleSet.normalizedCommand(command)
+        guard !name.isEmpty, let target = ruleTarget(forPickerValue: inputSourceID) else {
+            return false
+        }
+        guard commandRuleSet.rule(forCommand: name) == nil else {
+            inputSourceStatus = StatusMessage(text: "“" + name + "”已经有规则了。", severity: .warning)
+            return false
+        }
+
+        var candidate = commandRuleSet
+        candidate.upsert(CommandRule(command: name, inputSourceID: target.id, inputSourceName: target.name))
+        return commitCommandRules(candidate)
+    }
+
+    func setInputSourceID(_ inputSourceID: String, forCommand command: String) {
+        guard commandRuleEditingEnabled else {
+            storageStatus = .commandRulesReadFailure
+            return
+        }
+        guard
+            var rule = commandRuleSet.rule(forCommand: command),
+            let target = ruleTarget(forPickerValue: inputSourceID)
+        else {
+            return
+        }
+
+        rule.inputSourceID = target.id
+        rule.inputSourceName = target.name
+        var candidate = commandRuleSet
+        candidate.upsert(rule)
+        guard candidate != commandRuleSet else { return }
+        commitCommandRules(candidate)
+    }
+
+    func removeCommandRule(_ command: String) {
+        guard commandRuleEditingEnabled else {
+            storageStatus = .commandRulesReadFailure
+            return
+        }
+
+        var candidate = commandRuleSet
+        guard candidate.remove(command: command) != nil else { return }
+        commitCommandRules(candidate)
+    }
+
+    @discardableResult
+    private func commitCommandRules(_ candidate: CommandRuleSet) -> Bool {
+        do {
+            try commandStore.save(candidate.rules)
+            commandRuleSet = candidate
+            storageStatus = .rulesSaved
+            updateTerminalPolling(for: currentApplication)
+            return true
+        } catch {
+            storageStatus = .rulesSaveFailure
+            return false
+        }
+    }
+
+    func openAutomationSystemSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    // MARK: - Chinese and English input sources
+
+    var effectiveChineseInputSource: InputSource? {
+        resolveInputSource(chineseInputSourceSelection) { detectedChineseInputSource }
+    }
+
+    /// The first input method that is neither a keyboard layout nor the voice
+    /// input source, for example Shuangpin.
+    var detectedChineseInputSource: InputSource? {
+        let voiceID = effectiveVoiceInputSource?.id
+        return inputSources.first { !Self.isKeyboardLayout($0.id) && $0.id != voiceID }
+    }
+
+    var effectiveEnglishInputSource: InputSource? {
+        resolveInputSource(englishInputSourceSelection) { detectedEnglishInputSource }
+    }
+
+    /// The first keyboard layout, for example U.S. or ABC.
+    var detectedEnglishInputSource: InputSource? {
+        inputSources.first { Self.isKeyboardLayout($0.id) }
+    }
+
+    var chineseInputSourceChoices: [InputSourceChoice] {
+        settingChoices(for: chineseInputSourceSelection)
+    }
+
+    var englishInputSourceChoices: [InputSourceChoice] {
+        settingChoices(for: englishInputSourceSelection)
+    }
+
+    private static func isKeyboardLayout(_ id: String) -> Bool {
+        id.contains(".keylayout.")
+    }
+
+    private static func roleName(forRuleID id: String) -> String? {
+        switch id {
+        case chineseRuleID: return "中文"
+        case englishRuleID: return "英文"
+        default: return nil
+        }
+    }
+
+    /// The input source a rule switches to: the role's input source for a role,
+    /// otherwise the saved identifier itself.
+    private func targetInputSourceID(forRuleID id: String) -> String? {
+        switch id {
+        case Self.chineseRuleID: return effectiveChineseInputSource?.id
+        case Self.englishRuleID: return effectiveEnglishInputSource?.id
+        default: return id
+        }
+    }
+
+    private func resolveInputSource(_ selection: String, detected: () -> InputSource?) -> InputSource? {
+        if selection == Self.automaticInputSourceID {
+            return detected()
+        }
+        return inputSources.first { $0.id == selection }
+    }
+
+    private func persistSelection(_ selection: String, forKey key: String) {
+        if selection == Self.automaticInputSourceID {
+            defaults.removeObject(forKey: key)
+        } else {
+            defaults.set(selection, forKey: key)
+        }
+    }
+
+    /// Rules that name the input source a role used to stand for were shown as
+    /// that role, so they keep following it after the role changes.
+    private func adoptRole(_ roleID: String, forRulesUsing previous: InputSource?) {
+        guard
+            let previous,
+            ruleEditingEnabled,
+            let roleName = Self.roleName(forRuleID: roleID)
+        else {
+            return
+        }
+
+        var candidate = ruleSet
+        for rule in ruleSet.rules where rule.inputSourceID == previous.id {
+            var updated = rule
+            updated.inputSourceID = roleID
+            updated.inputSourceName = roleName
+            candidate.upsert(updated)
+        }
+
+        if candidate != ruleSet {
+            commit(candidate)
+        }
+
+        guard commandRuleEditingEnabled else { return }
+        var commandCandidate = commandRuleSet
+        for rule in commandRuleSet.rules where rule.inputSourceID == previous.id {
+            var updated = rule
+            updated.inputSourceID = roleID
+            updated.inputSourceName = roleName
+            commandCandidate.upsert(updated)
+        }
+        if commandCandidate != commandRuleSet {
+            commitCommandRules(commandCandidate)
         }
     }
 
@@ -540,6 +862,7 @@ final class AppRuntime: ObservableObject {
         else {
             currentApplication = nil
             currentInputSource = inputSourceManager.currentInputSource()
+            updateTerminalPolling(for: nil)
             return
         }
 
@@ -551,16 +874,70 @@ final class AppRuntime: ObservableObject {
         applyRuleIfNeeded(for: applicationInfo)
     }
 
-    private func applyRuleIfNeeded(for app: RunningApplicationInfo) {
-        guard let rule = ruleSet.rule(forBundleIdentifier: app.bundleIdentifier) else {
+    /// Applies the rule for an application that just became active, and starts
+    /// following the program in its active tab when it is a terminal.
+    func applyRuleIfNeeded(for app: RunningApplicationInfo) {
+        var context: TerminalContext?
+        if case .found(let found)? = terminalContext(for: app) {
+            context = found
+        }
+
+        let rule = activeRule(for: app, context: context)
+        appliedRuleKey = rule?.key
+        switchInputSource(to: rule)
+        updateTerminalPolling(for: app)
+    }
+
+    /// The rule in effect: the command rule for the program in the active
+    /// terminal tab, otherwise the rule of the application.
+    private struct ActiveRule {
+        /// Identifies the context the rule was chosen for.
+        let key: String
+        let inputSourceID: String
+        let inputSourceName: String
+    }
+
+    private func activeRule(for app: RunningApplicationInfo, context: TerminalContext?) -> ActiveRule? {
+        let tab = context.map { "@" + $0.tty } ?? ""
+
+        if let context, let rule = commandRuleSet.rule(matchingAnyOf: context.candidates) {
+            return ActiveRule(
+                key: "command:" + rule.id + tab + "=" + rule.inputSourceID,
+                inputSourceID: rule.inputSourceID,
+                inputSourceName: rule.inputSourceName
+            )
+        }
+
+        if let rule = ruleSet.rule(forBundleIdentifier: app.bundleIdentifier) {
+            return ActiveRule(
+                key: "app:" + app.bundleIdentifier + tab + "=" + rule.inputSourceID,
+                inputSourceID: rule.inputSourceID,
+                inputSourceName: rule.inputSourceName
+            )
+        }
+
+        return nil
+    }
+
+    private func switchInputSource(to rule: ActiveRule?) {
+        guard let rule else {
             currentInputSource = inputSourceManager.currentInputSource()
             inputSourceStatus = nil
             return
         }
 
-        if inputSourceManager.currentInputSource()?.id != rule.inputSourceID {
+        guard let targetID = targetInputSourceID(forRuleID: rule.inputSourceID) else {
+            inputSourceStatus = StatusMessage(
+                text: "还没有找到" + rule.inputSourceName + "输入法，请在设置里选择。",
+                severity: .warning
+            )
+            currentInputSource = inputSourceManager.currentInputSource()
+            return
+        }
+
+        if inputSourceManager.currentInputSource()?.id != targetID {
             // The count only tracks input sources that were actually switched.
-            if inputSourceManager.selectInputSource(id: rule.inputSourceID) {
+            if inputSourceManager.selectInputSource(id: targetID) {
                 switchCounter.recordSwitch()
                 switchCount = switchCounter.count
                 inputSourceStatus = nil
@@ -577,15 +954,96 @@ final class AppRuntime: ObservableObject {
         currentInputSource = inputSourceManager.currentInputSource()
     }
 
+    // MARK: - Programs in the terminal
+
+    /// Terminal tabs are only inspected while a command rule could apply, so the
+    /// Automation permission is not requested from people who never use them.
+    private func followsTerminal(_ app: RunningApplicationInfo) -> Bool {
+        terminalSwitchingEnabled
+            && !commandRuleSet.rules.isEmpty
+            && terminalContextProvider.supportsTerminal(bundleIdentifier: app.bundleIdentifier)
+    }
+
+    private func terminalContext(for app: RunningApplicationInfo) -> TerminalContextResult? {
+        guard followsTerminal(app) else { return nil }
+
+        let result = terminalContextProvider.foregroundContext(bundleIdentifier: app.bundleIdentifier)
+        switch result {
+        case .found(let context):
+            if terminalAccessDenied { terminalAccessDenied = false }
+            if lastTerminalContext != context { lastTerminalContext = context }
+        case .denied:
+            if !terminalAccessDenied { terminalAccessDenied = true }
+        case .unavailable:
+            break
+        }
+        return result
+    }
+
+    private func updateTerminalPolling(for app: RunningApplicationInfo?) {
+        guard let app, followsTerminal(app) else {
+            stopTerminalPolling()
+            return
+        }
+
+        polledApplication = app
+        guard terminalPollTask == nil else { return }
+
+        let interval = terminalPollInterval
+        terminalPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled, let self else { return }
+                self.pollTerminal()
+            }
+        }
+    }
+
+    private func stopTerminalPolling() {
+        terminalPollTask?.cancel()
+        terminalPollTask = nil
+        polledApplication = nil
+    }
+
+    /// Switches when the program in the active tab, or the tab itself, changed.
+    private func pollTerminal() {
+        guard let app = polledApplication, let result = terminalContext(for: app) else {
+            stopTerminalPolling()
+            return
+        }
+
+        let context: TerminalContext?
+        switch result {
+        case .found(let found):
+            context = found
+        case .denied:
+            context = nil
+        case .unavailable:
+            // Keep the current rule instead of falling back for a moment.
+            return
+        }
+
+        let rule = activeRule(for: app, context: context)
+        guard rule?.key != appliedRuleKey else { return }
+        // Switching now would cut off a voice input method that is listening;
+        // the change is applied once it switched back.
+        guard !isVoiceInputSourceSelected else { return }
+
+        appliedRuleKey = rule?.key
+        switchInputSource(to: rule)
+    }
+
+    private var isVoiceInputSourceSelected: Bool {
+        guard let voiceID = effectiveVoiceInputSource?.id else { return false }
+        return normalizedVoiceSourceID(inputSourceManager.currentInputSource()?.id) == voiceID
+    }
+
     // MARK: - Voice input restore
 
     /// The voice input source in effect: the saved choice, otherwise the first
     /// input source that looks like Doubao.
     var effectiveVoiceInputSource: InputSource? {
-        if voiceInputSourceSelection != Self.automaticVoiceInputSourceID {
-            return inputSources.first { $0.id == voiceInputSourceSelection }
-        }
-        return detectedVoiceInputSource
+        resolveInputSource(voiceInputSourceSelection) { detectedVoiceInputSource }
     }
 
     var detectedVoiceInputSource: InputSource? {
@@ -594,20 +1052,19 @@ final class AppRuntime: ObservableObject {
         }
     }
 
-    /// Picker entries for the voice input source, keeping a saved choice that is
-    /// no longer installed visible.
     var voiceInputSourceChoices: [InputSourceChoice] {
+        settingChoices(for: voiceInputSourceSelection)
+    }
+
+    /// Picker entries for a settings choice, keeping a saved choice that is no
+    /// longer installed visible.
+    private func settingChoices(for selection: String) -> [InputSourceChoice] {
         var choices = inputSources.map { InputSourceChoice(id: $0.id, name: $0.name) }
         if
-            voiceInputSourceSelection != Self.automaticVoiceInputSourceID,
-            !choices.contains(where: { $0.id == voiceInputSourceSelection })
+            selection != Self.automaticInputSourceID,
+            !choices.contains(where: { $0.id == selection })
         {
-            choices.append(
-                InputSourceChoice(
-                    id: voiceInputSourceSelection,
-                    name: "不可用：" + voiceInputSourceSelection
-                )
-            )
+            choices.append(InputSourceChoice(id: selection, name: "不可用：" + selection))
         }
         return choices
     }

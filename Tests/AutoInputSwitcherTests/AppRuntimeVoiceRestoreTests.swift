@@ -94,6 +94,26 @@ final class AppRuntimeVoiceRestoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRuleChoicesHideTheVoiceInputSource() async {
+        let fixture = makeVoiceFixture()
+        let terminal = makeInstalledApplication("Terminal", "com.apple.Terminal")
+        let doubaoID = TestInputSources.doubao.id
+
+        XCTAssertFalse(fixture.runtime.inputSourceChoices(for: terminal).contains { $0.id == doubaoID })
+        XCTAssertTrue(fixture.runtime.voiceInputSourceChoices.contains { $0.id == doubaoID })
+
+        // A rule that already uses the voice input source keeps showing it by name.
+        fixture.runtime.voiceRestoreEnabled = false
+        fixture.runtime.setInputSourceID(doubaoID, for: terminal)
+        fixture.runtime.voiceRestoreEnabled = true
+
+        XCTAssertEqual(
+            fixture.runtime.inputSourceChoices(for: terminal).first { $0.id == doubaoID },
+            InputSourceChoice(id: doubaoID, name: TestInputSources.doubao.name)
+        )
+    }
+
+    @MainActor
     func testExplicitVoiceInputSourceIsPersistedAndUsed() async {
         let fixture = makeVoiceFixture()
 
@@ -105,7 +125,7 @@ final class AppRuntimeVoiceRestoreTests: XCTestCase {
             TestInputSources.us.id
         )
 
-        fixture.runtime.voiceInputSourceSelection = AppRuntime.automaticVoiceInputSourceID
+        fixture.runtime.voiceInputSourceSelection = AppRuntime.automaticInputSourceID
 
         XCTAssertNil(fixture.defaults.string(forKey: AppRuntime.voiceInputSourceIDKey))
         XCTAssertEqual(fixture.runtime.effectiveVoiceInputSource, TestInputSources.doubao)

@@ -8,6 +8,10 @@ import AutoInputSwitcherCore
 enum TestInputSources {
     static let us = InputSource(id: "com.apple.keylayout.US", name: "U.S.")
     static let abc = InputSource(id: "com.apple.keylayout.ABC", name: "ABC")
+    static let shuangpin = InputSource(
+        id: "com.apple.inputmethod.SCIM.Shuangpin",
+        name: "Shuangpin – Simplified"
+    )
     static let doubao = InputSource(
         id: "com.bytedance.inputmethod.doubaoime.pinyin",
         name: "豆包输入法"
@@ -22,6 +26,8 @@ enum TestInputSources {
 struct RuntimeFixture {
     let runtime: AppRuntime
     let store: FakeRuleStore
+    let commandStore: FakeCommandRuleStore
+    let terminal: FakeTerminalContextProvider
     let inputSources: FakeInputSourceManager
     let scanner: FakeApplicationScanner
     let loginItems: FakeLoginItemManager
@@ -34,6 +40,7 @@ struct RuntimeFixture {
 @MainActor
 func makeFixture(
     rules: [AppRule] = [],
+    commandRules: [CommandRule] = [],
     installedApplications: [InstalledApplication] = [],
     sources: [InputSource] = TestInputSources.all,
     current: InputSource? = TestInputSources.us,
@@ -45,6 +52,8 @@ func makeFixture(
     defaults.removePersistentDomain(forName: suiteName)
 
     let store = FakeRuleStore(rules: rules)
+    let commandStore = FakeCommandRuleStore(rules: commandRules)
+    let terminal = FakeTerminalContextProvider()
     let inputSources = FakeInputSourceManager(sources: sources, current: current)
     let scanner = FakeApplicationScanner(
         result: ApplicationScanResult(
@@ -60,6 +69,9 @@ func makeFixture(
 
     let runtime = AppRuntime(
         store: store,
+        commandStore: commandStore,
+        terminalContextProvider: terminal,
+        terminalPollInterval: 0.02,
         inputSourceManager: inputSources,
         applicationScanner: scanner,
         loginItemManager: loginItems,
@@ -82,6 +94,8 @@ func makeFixture(
     return RuntimeFixture(
         runtime: runtime,
         store: store,
+        commandStore: commandStore,
+        terminal: terminal,
         inputSources: inputSources,
         scanner: scanner,
         loginItems: loginItems,

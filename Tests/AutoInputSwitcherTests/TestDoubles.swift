@@ -296,3 +296,69 @@ final class FakeLoginItemManager: LoginItemManaging {
     }
 }
 
+
+// MARK: - Command rules
+
+/// In-memory store for command rules.
+final class FakeCommandRuleStore: CommandRuleStore, @unchecked Sendable {
+    let url = URL(fileURLWithPath: "/tmp/AutoInputSwitcherTests/command-rules.json")
+
+    private let lock = NSLock()
+    private var storedRules: [CommandRule]
+    private var loadError: Error?
+
+    init(rules: [CommandRule] = []) {
+        self.storedRules = rules
+    }
+
+    var rules: [CommandRule] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedRules
+    }
+
+    func failLoading(with error: Error?) {
+        lock.lock()
+        defer { lock.unlock() }
+        loadError = error
+    }
+
+    func load() throws -> [CommandRule] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let loadError {
+            throw loadError
+        }
+        return storedRules
+    }
+
+    func save(_ rules: [CommandRule]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        storedRules = rules
+    }
+}
+
+// MARK: - Terminal
+
+/// Reports whatever program the test put in the foreground of the terminal.
+@MainActor
+final class FakeTerminalContextProvider: TerminalContextProviding {
+    var supportedBundleIdentifiers: Set<String> = ["com.apple.Terminal", "com.googlecode.iterm2"]
+    var result: TerminalContextResult = .unavailable
+    private(set) var queryCount = 0
+
+    func supportsTerminal(bundleIdentifier: String) -> Bool {
+        supportedBundleIdentifiers.contains(bundleIdentifier)
+    }
+
+    func foregroundContext(bundleIdentifier: String) -> TerminalContextResult {
+        queryCount += 1
+        return result
+    }
+
+    /// Puts a program in the foreground of a tab.
+    func run(_ candidates: [String], tty: String = "/dev/ttys001") {
+        result = .found(TerminalContext(tty: tty, candidates: candidates))
+    }
+}

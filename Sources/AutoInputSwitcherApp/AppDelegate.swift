@@ -53,6 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // set of observers.
         let runtime = AppRuntime(
             store: ruleStore,
+            commandStore: JSONCommandRuleStore(
+                url: ruleStore.url.deletingLastPathComponent().appendingPathComponent("command-rules.json")
+            ),
             defaults: defaults,
             updateController: UpdateController.makeForHostBundle()
         )
@@ -153,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 NSApp.terminate(nil)
             }
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 980, height: 640),
+                contentRect: NSRect(x: 0, y: 0, width: 760, height: 600),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false

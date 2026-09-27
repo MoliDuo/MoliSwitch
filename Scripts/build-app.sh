@@ -80,10 +80,18 @@ if [ "${#ARCHES[@]}" -eq 0 ]; then
     bin_dir="$(swift build -c "$CONFIGURATION" --show-bin-path)"
     BINARIES+=("$bin_dir/$APP_NAME")
 else
+    # 较新的 SwiftPM 对不同架构使用同一个输出目录，后一次构建会覆盖前一次，
+    # 所以每个架构构建完立即复制到各自的暂存目录。
+    STAGING_DIR="$ROOT_DIR/.build/arch-staging"
+    remove_path "$STAGING_DIR"
+
     for arch in "${ARCHES[@]}"; do
         swift build -c "$CONFIGURATION" --product "$APP_NAME" --arch "$arch"
         bin_dir="$(swift build -c "$CONFIGURATION" --arch "$arch" --show-bin-path)"
-        BINARIES+=("$bin_dir/$APP_NAME")
+        [ -f "$bin_dir/$APP_NAME" ] || fail "构建产物不存在：$bin_dir/$APP_NAME"
+        mkdir -p "$STAGING_DIR/$arch"
+        cp "$bin_dir/$APP_NAME" "$STAGING_DIR/$arch/$APP_NAME"
+        BINARIES+=("$STAGING_DIR/$arch/$APP_NAME")
     done
 fi
 
@@ -194,6 +202,8 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST_EOF
     <string>$MINIMUM_SYSTEM_VERSION</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>读取终端当前标签页，用来按前台程序切换输入法</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>SUFeedURL</key>
