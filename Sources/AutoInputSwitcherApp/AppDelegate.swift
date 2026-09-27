@@ -4,12 +4,12 @@ import Combine
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
-    private enum DefaultsKey {
-        /// Set once the first run window has actually been shown, so later cold
-        /// launches stay in the menu bar.
-        static let hasCompletedInitialSetup = "hasCompletedInitialSetup"
-    }
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSMenuItemValidation {
+    private static let appName = "AutoInputSwitcher"
+    private static let windowFrameName = "MainWindow"
+    /// Launches this soon after boot with launch at login turned on are treated
+    /// as login item launches when the system did not mark them as such.
+    private static let loginLaunchUptimeLimit: TimeInterval = 180
 
     private let defaults: UserDefaults
     private let ruleStore: JSONRuleStore
@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var window: NSWindow?
     private var statusItem: NSStatusItem?
     private var menuBarIconObservation: AnyCancellable?
-    private var isPresentingStatusMenu = false
+    private var launchedAsLoginItem = false
 
     init(
         defaults: UserDefaults = .standard,
@@ -38,6 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     // MARK: - Launch
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // The launch event is only available until launching finishes.
+        launchedAsLoginItem = Self.launchEventIsLoginItem()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -64,24 +69,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         self.runtime = runtime
 
+        NSApp.mainMenu = makeMainMenu()
+        setupStatusItem()
         menuBarIconObservation = runtime.$showMenuBarIcon
             .removeDuplicates()
             .sink { [weak self] isVisible in
                 self?.statusItem?.isVisible = isVisible
             }
 
-        setupMenuBar()
         runtime.start()
 
         coordinator.startRespondingToShowRequests { [weak self] in
             self?.showWindow()
         }
 
-        // A rule file that could not be read has to be visible: the user cannot
-        // fix it from the menu bar without opening the window.
-        if runtime.hasStorageFailure || shouldShowWindowOnFirstLaunch() {
+        // Opening the app shows its window. Only a launch at login stays in the
+        // menu bar, unless a rule file could not be read: that has to be visible.
+        let isLoginLaunch = launchedAsLoginItem
+            || (runtime.isLaunchAtLoginEnabled
+                && ProcessInfo.processInfo.systemUptime < Self.loginLaunchUptimeLimit)
+        if !isLoginLaunch || runtime.hasStorageFailure {
             showWindow()
         }
+    }
+
+    private static func launchEventIsLoginItem() -> Bool {
+        guard
+            let event = NSAppleEventManager.shared().currentAppleEvent,
+            event.eventID == AEEventID(kAEOpenApplication)
+        else {
+            return false
+        }
+
+        return event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+            == OSType(keyAELaunchedAsLogInItem)
     }
 
     private func claimSingleInstance() -> Bool {
@@ -103,26 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func presentLaunchFailure(_ reason: String) {
         let alert = NSAlert()
-        alert.messageText = "无法启动 AutoInputSwitcher"
+        alert.messageText = "无法启动 " + Self.appName
         alert.informativeText = reason
         alert.alertStyle = .critical
         alert.addButton(withTitle: "退出")
         alert.runModal()
-    }
-
-    private func shouldShowWindowOnFirstLaunch() -> Bool {
-        if defaults.bool(forKey: DefaultsKey.hasCompletedInitialSetup) {
-            return false
-        }
-
-        // Migration: a user who already has a rule file has used the app before
-        // the flag existed and must not see the first run window again.
-        if ruleStore.fileExists {
-            defaults.set(true, forKey: DefaultsKey.hasCompletedInitialSetup)
-            return false
-        }
-
-        return true
     }
 
     // MARK: - Windows
@@ -145,28 +151,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         coordinator.releaseLock()
     }
 
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        true
-    }
-
     func showWindow() {
         if window == nil {
             guard let runtime else {
                 return
             }
 
-            let contentView = MainWindowView(runtime: runtime) {
-                NSApp.terminate(nil)
-            }
+            let controller = NSHostingController(rootView: MainWindowView(runtime: runtime) { NSApp.terminate(nil) })
+            controller.sceneBridgingOptions = [.toolbars]
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 600),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
             )
-            window.title = "AutoInputSwitcher"
-            window.contentView = NSHostingView(rootView: contentView)
-            window.center()
+            window.contentViewController = controller
+            window.title = Self.appName
+            window.toolbarStyle = .unified
+            window.contentMinSize = NSSize(width: 720, height: 480)
+            window.setContentSize(NSSize(width: 820, height: 560))
+            if !window.setFrameUsingName(Self.windowFrameName) {
+                window.center()
+            }
+            window.setFrameAutosaveName(Self.windowFrameName)
             window.delegate = self
             window.isReleasedWhenClosed = false
             self.window = window
@@ -181,110 +188,109 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-
-        // Only a window that really appeared marks the first run as done.
-        defaults.set(true, forKey: DefaultsKey.hasCompletedInitialSetup)
     }
 
-    // MARK: - Menu bar
+    // MARK: - Main menu
 
-    private func setupMenuBar() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let button = item.button
-        button?.image = NSImage(
-            systemSymbolName: "keyboard",
-            accessibilityDescription: "AutoInputSwitcher"
+    /// An accessory app shows no menu bar, but its main menu still handles the
+    /// standard key equivalents such as ⌘W, ⌘Q and ⌘V in text fields.
+    private func makeMainMenu() -> NSMenu {
+        let mainMenu = NSMenu()
+
+        let appMenu = NSMenu(title: Self.appName)
+        appMenu.addItem(makeMenuItem(title: "关于 " + Self.appName, action: #selector(showAboutPanel)))
+        appMenu.addItem(.separator())
+        appMenu.addItem(makeMenuItem(title: "设置…", action: #selector(showWindowFromMenu), keyEquivalent: ","))
+        appMenu.addItem(.separator())
+        appMenu.addItem(
+            NSMenuItem(title: "隐藏 " + Self.appName, action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         )
-        button?.toolTip = "AutoInputSwitcher"
-        button?.target = self
-        button?.action = #selector(statusItemClicked(_:))
-        // A menu is attached only while the right button is handled, so the left
-        // click keeps toggling the window instead of opening a menu.
-        button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        appMenu.addItem(.separator())
+        appMenu.addItem(
+            NSMenuItem(title: "退出 " + Self.appName, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        )
+        addSubmenu(appMenu, to: mainMenu)
+
+        let editMenu = NSMenu(title: "编辑")
+        editMenu.addItem(NSMenuItem(title: "撤销", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redo)
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "拷贝", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        addSubmenu(editMenu, to: mainMenu)
+
+        let windowMenu = NSMenu(title: "窗口")
+        windowMenu.addItem(NSMenuItem(title: "关闭", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        windowMenu.addItem(
+            NSMenuItem(title: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        )
+        addSubmenu(windowMenu, to: mainMenu)
+        NSApp.windowsMenu = windowMenu
+
+        return mainMenu
+    }
+
+    private func addSubmenu(_ submenu: NSMenu, to menu: NSMenu) {
+        let item = NSMenuItem(title: submenu.title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        menu.addItem(item)
+    }
+
+    // MARK: - Status item
+
+    private func setupStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.image = NSImage(
+            systemSymbolName: "keyboard",
+            accessibilityDescription: Self.appName
+        )
+        item.button?.toolTip = Self.appName
+
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
         item.isVisible = runtime?.showMenuBarIcon ?? true
         statusItem = item
     }
 
-    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
-        if NSApp.currentEvent?.type == .rightMouseUp {
-            presentStatusMenu()
-        } else {
-            toggleWindow()
-        }
-    }
-
-    private func presentStatusMenu() {
-        guard let statusItem, !isPresentingStatusMenu else {
+    /// The status menu is rebuilt each time it opens, so the remember item
+    /// describes the field that has focus right now.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else {
             return
         }
 
-        isPresentingStatusMenu = true
-        defer {
-            statusItem.menu = nil
-            isPresentingStatusMenu = false
-        }
-
-        statusItem.menu = makeStatusMenu()
-        statusItem.button?.performClick(nil)
-    }
-
-    private func makeStatusMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(
-            makeMenuItem(
-                title: "显示主窗口",
-                action: #selector(showWindowFromMenu),
-                keyEquivalent: ""
-            )
-        )
-        menu.addItem(.separator())
+        menu.removeAllItems()
         menu.addItem(makeRememberFieldItem())
         menu.addItem(.separator())
-        menu.addItem(
-            makeMenuItem(
-                title: "检查更新…",
-                action: #selector(checkForUpdatesFromMenu),
-                keyEquivalent: ""
-            )
-        )
+        menu.addItem(makeMenuItem(title: "打开 " + Self.appName + "…", action: #selector(showWindowFromMenu), keyEquivalent: ","))
+        menu.addItem(makeMenuItem(title: "检查更新…", action: #selector(checkForUpdatesFromMenu)))
         menu.addItem(.separator())
-        menu.addItem(
-            makeMenuItem(
-                title: "关于 AutoInputSwitcher",
-                action: #selector(showAboutPanel),
-                keyEquivalent: ""
-            )
-        )
-        menu.addItem(.separator())
-        menu.addItem(
-            makeMenuItem(
-                title: "退出 AutoInputSwitcher",
-                action: #selector(terminateApp),
-                keyEquivalent: "q"
-            )
-        )
-        return menu
+        menu.addItem(makeMenuItem(title: "关于 " + Self.appName, action: #selector(showAboutPanel)))
+        menu.addItem(makeMenuItem(title: "退出 " + Self.appName, action: #selector(terminateApp), keyEquivalent: "q"))
     }
 
-    /// Opening a status item menu does not activate AutoInputSwitcher, so the
-    /// field the user was typing in still has keyboard focus.
+    /// Opening a status item menu does not activate the app, so the field the
+    /// user was typing in still has keyboard focus.
     private func makeRememberFieldItem() -> NSMenuItem {
         switch runtime?.fieldCaptureState() ?? .noField {
         case .ready(let applicationName, let inputSourceName):
             return makeMenuItem(
-                title: "记住当前输入框：" + applicationName + " 使用 " + inputSourceName,
-                action: #selector(rememberFocusedField),
-                keyEquivalent: ""
+                title: "记住当前输入框（" + applicationName + " · " + inputSourceName + "）",
+                action: #selector(rememberFocusedField)
             )
         case .needsAccessibility:
             return makeMenuItem(
                 title: "记住当前输入框（需要辅助功能权限）…",
-                action: #selector(requestAccessibilityFromMenu),
-                keyEquivalent: ""
+                action: #selector(requestAccessibilityFromMenu)
             )
         case .noField:
             // No action, so the item is shown disabled.
-            return NSMenuItem(title: "记住当前输入框：先点一下要记住的输入框", action: nil, keyEquivalent: "")
+            return NSMenuItem(title: "记住当前输入框", action: nil, keyEquivalent: "")
         }
     }
 
@@ -293,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func makeMenuItem(
         title: String,
         action: Selector,
-        keyEquivalent: String
+        keyEquivalent: String = ""
     ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
         item.target = self
@@ -306,19 +312,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
 
         return true
-    }
-
-    @objc private func toggleWindow() {
-        guard let window else {
-            showWindow()
-            return
-        }
-
-        if window.isVisible && window.isKeyWindow {
-            window.orderOut(nil)
-        } else {
-            showWindow()
-        }
     }
 
     @objc private func showWindowFromMenu() {
@@ -338,6 +331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc private func showAboutPanel() {
+        NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(nil)
     }
 
