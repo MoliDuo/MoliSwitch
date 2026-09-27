@@ -1,20 +1,15 @@
-# AutoInputSwitcher
+# MoliSwitch
 
-AutoInputSwitcher 是一个原生 macOS 小工具：根据当前前台应用自动切换键盘输入法。
-
-它的行为刻意保持简单：
+MoliSwitch 是一个原生 macOS 小工具：根据当前前台应用自动切换键盘输入法。它是 Moli 系列的一员，以前叫 AutoInputSwitcher。
 
 - 扫描已安装的应用，为每个应用保存一条输入法规则。
-- 在设置里指定一次“中文 / 英文 / 语音”分别用哪个输入法，每个应用的规则只需选“默认”“中文”“英文”或“不切换”。
+- 在“通用”里指定一次“中文 / 英文”分别用哪个输入法，每个应用的规则只需选“默认”“中文”“英文”或“不切换”。
 - 可设一个默认输入法：没单独设规则的应用成为前台时都切到它。
-- 规则只保存在本机（`~/Library/Application Support/AutoInputSwitcher/rules.json`）。
-- 关闭窗口后继续在后台运行；可从 Finder、Spotlight、Launchpad 或菜单栏图标重新打开。
-- 可选择显示菜单栏图标；不显示 Dock 图标（`LSUIElement`）。
-- 可设置为登录时启动。
-- 统计“实际发生切换”的次数。
 - 在“终端”和 iTerm2 里还能按正在运行的程序切换：比如进入 claude、codex 用中文，vim 和 shell 用英文。
 - 同一个 App 里还能按输入框切换：浏览器地址栏默认用英文，也可以记住某个输入框（比如微信的搜索框）单独用一个输入法。
-- 可选：用豆包输入法做完一次语音输入后，自动切回语音输入前正在用的输入法。
+- 规则只保存在本机（`~/Library/Application Support/MoliSwitch/`）。
+- 关闭窗口后继续在后台运行；不显示 Dock 图标（`LSUIElement`），可选择显示菜单栏图标。
+- 可设置为登录时打开。
 - 内置 Sparkle 自动更新，每小时检查一次新版本。
 
 ## 系统要求
@@ -26,100 +21,91 @@ AutoInputSwitcher 是一个原生 macOS 小工具：根据当前前台应用自�
 
 ## 使用
 
-打开主窗口后，每个已安装的应用在表格里占一行：
+### 打开与退出
 
-- 选择“默认（…）”：该应用没有自己的规则，跟随齿轮按钮里的“默认输入法”；括号里显示默认现在是什么。默认输入法初始为“不切换”，也就是和以前一样不动这些应用。
-- 选择“不切换”：该应用始终不做自动切换，默认输入法也不会作用于它。
-- 选择“中文”或“英文”：该应用成为前台时，切到齿轮按钮里设置的中文或英文输入法。以后换了中文输入法，只要改一处设置，所有“中文”规则都会跟着变。
+- 从 Finder、Spotlight 或启动台打开时显示主窗口；已经在运行时再打开一次，也会把窗口带到前面。
+- 登录时自动打开的那一次不显示窗口，只在后台运行。
+- 关闭窗口（⌘W）后 MoliSwitch 继续运行。要退出，在窗口里按 ⌘Q，或点菜单栏图标 › 退出 MoliSwitch。
+- 菜单栏图标的菜单里有：记住当前输入框、打开 MoliSwitch…（⌘,）、检查更新…、关于、退出。
+- 在“通用”里关掉菜单栏图标后，再次打开 MoliSwitch 即可回到主窗口。
+
+主窗口左侧是四个页面：应用、终端程序、输入框、通用。
+
+### 应用
+
+页面顶部的“默认输入法”作用于所有没有单独设置的应用，初始为“不切换”。下面的表格里，每个已安装的应用占一行：
+
+- “默认（…）”：跟随默认输入法，括号里显示默认现在是什么。
+- “不切换”：该应用始终不做自动切换，默认输入法也不会作用于它。
+- “中文”或“英文”：切到“通用”里设置的中文或英文输入法。以后换了中文输入法，只要改一处，所有“中文”规则都会跟着变。
 - 下拉框下半部分列出其他输入法（比如日文），也可以直接选一个具体的输入法。
-- 规则里保存的输入法在当前系统上不可用时，选择器仍会保留一项“不可用：{已保存名称}”，规则不会被自动删除或改写。请手动改选一个可用输入法。
-- 规则指向的应用已经卸载时，该行会标记“未找到应用”，仍可修改或删除规则。
-- “全部 / 已配置 / 未配置”用于筛选列表，“未配置”只显示扫描到且还没有规则的应用。
-- 右上角的刷新按钮会重新扫描应用和输入法；齿轮按钮里是开机自启、菜单栏图标、默认输入法、中文 / 英文 / 语音输入法、语音输入后切回、检查更新和退出。
-- 窗口底部显示当前状态、已配置的应用数和本次运行以来的切换次数。
+- 规则里保存的输入法在当前系统上不可用时，选择器会保留一项“不可用：{已保存名称}”，规则不会被自动删除或改写，请手动改选。
+- 规则指向的应用已经卸载时，该行标记“未找到应用”，仍可修改规则。
 
-### 语音输入后切回原输入法
+工具栏里有搜索框、“全部 / 已设置 / 未设置”筛选和重新扫描应用与输入法的按钮。
 
-豆包输入法的语音唤醒键（如 option+command）会先把系统输入法切到豆包再录音，文字上屏后输入法仍停在豆包。主窗口齿轮按钮里可以打开“语音输入后切回原输入法”：
+### 中文和英文输入法
 
-- 一次语音输入结束（麦克风不再被占用、豆包的识别浮窗消失后再等约 0.3 秒）后，自动切回切到豆包之前的输入法；如果浮窗一直检测不到消失，麦克风停止 8 秒后也会切回。
-- 只是手动切到豆包打字、没有用麦克风时，不会切回。
-- 等待切回期间如果手动切到别的输入法，或规则切换了输入法，本次不再切回。
-- 语音输入法默认自动识别名称含“豆包”或 ID 含 `doubao` 的输入法，也可以在“输入法”一节手动指定。
-- 只读取“麦克风是否被占用”和窗口的归属与位置，不录音、不读取窗口内容，不需要麦克风或屏幕录制权限。
-- 切回也计入“已切换”次数。
-- 功能打开时，App 规则的下拉框里不再列出语音输入法（已经设成它的旧规则仍然保留）。
-- 系统自带中文输入法开启“用大小写键切换到/离开 U.S.（或 ABC）”时，按大小写键其实就是在中文输入法和 U.S. 之间切换；所以把“英文”设为 U.S.，规则选“英文”的效果和手动按一下大小写键相同。
+“通用”里的“输入法”一节指定这两个角色，默认都是“自动识别”：
 
-### 中文、英文、语音输入法
-
-齿轮按钮里的“输入法”一节可以指定这三个角色，默认都是“自动识别”：
-
-- 中文：既不是键盘布局、也不是语音输入法的输入法，优先系统自带的简体 / 繁体中文输入法（如“双拼”）；没有系统自带的才用第三方的（如微信键盘、搜狗）。装了多个中文输入法时建议手动指定。
+- 中文：不是键盘布局的输入法，优先系统自带的简体 / 繁体中文输入法（如“双拼”）；没有系统自带的才用第三方的（如微信键盘、搜狗）。装了多个中文输入法时建议手动指定。
 - 英文：第一个键盘布局（如 U.S. 或 ABC）。
-- 语音：名称含“豆包”或 ID 含 `doubao` 的输入法。
 
-第三方输入法（微信键盘、搜狗、手心等）要先在 系统设置 › 键盘 › 输入法 中添加，之后才会出现在列表里。每次切换后会读回当前输入法确认，系统没有切过去时状态栏会提示。
+第三方输入法要先在 系统设置 › 键盘 › 输入法 中添加，之后才会出现在列表里。每次切换后会读回当前输入法确认，系统没有切过去时窗口顶部会提示。
 
-已有规则如果直接选的是当前的中文或英文输入法，会显示为“中文”或“英文”；之后在设置里改掉这个角色时，这些规则会一起跟过去。
+系统自带中文输入法开启“用大小写键切换到/离开 U.S.（或 ABC）”时，按大小写键其实就是在中文输入法和 U.S. 之间切换；所以把“英文”设为 U.S.，规则选“英文”的效果和手动按一下大小写键相同。
 
-### 终端里按程序切换
+已有规则如果直接选的是当前的中文或英文输入法，会显示为“中文”或“英文”；之后改掉这个角色时，这些规则会一起跟过去。
 
-主窗口工具栏的终端按钮里可以给命令行程序单独设规则，比如 `claude`、`codex` 用“中文”，`vim`、`nvim` 用“英文”。规则保存在同目录的 `command-rules.json`，“终端”和 iTerm2 共用。
+### 终端程序
 
-- 前台是“终端”或 iTerm2 时，每 0.5 秒看一次当前标签页里正在运行的程序：
-  - 命中规则就切到对应输入法。
-  - 没有命中（比如回到了 shell）就用这个终端 App 自己的规则。
-- 只在“该用哪条规则”变化时切换，比如启动或退出程序、换标签页、从别的 App 切回终端。停在同一个程序里手动按大小写键切过的输入法不会被改回去。
-- 正在用语音输入法时先不切，等它切回后再按当前程序切换，不会打断语音识别。
-- 程序名不区分大小写，会依次比对：
-  - 解释器运行的脚本名，比如 `node …/bin/codex` 里的 `codex`
-  - 启动时的名字（argv[0]）
-  - 可执行文件名
-  - 进程名
+在“终端程序”页可以给命令行程序单独设规则，比如 `claude`、`codex` 用“中文”，`vim`、`nvim` 用“英文”。“终端”和 iTerm2 共用这些规则，保存在 `command-rules.json`。
 
-  刚在终端里跑过、还没有规则的程序，会显示一个“添加刚才在终端里运行的…”快捷按钮。
+- 前台是“终端”或 iTerm2 时，每 0.5 秒看一次当前标签页里正在运行的程序：命中规则就切到对应输入法；没有命中（比如回到了 shell）就用这个终端 App 自己的规则。
+- 只在“该用哪条规则”变化时切换，比如启动或退出程序、换标签页、从别的 App 切回终端。停在同一个程序里手动切过的输入法不会被改回去。
+- 程序名不区分大小写，依次比对：解释器运行的脚本名（如 `node …/bin/codex` 里的 `codex`）、启动时的名字（argv[0]）、可执行文件名、进程名。
+- 刚在终端里跑过、还没有规则的程序，页面上会出现“添加刚才在终端中运行的…”。
 - tmux 里会识别当前窗格正在运行的程序。
-- ssh 只能看到 `ssh` 本身，远程机器上运行的程序看不到，所以只能给 `ssh` 整体设一条规则。
-- 读取当前标签页需要“自动化”权限：第一次在终端里用到规则时系统会询问。拒绝后可以在“系统设置 → 隐私与安全性 → 自动化”里重新打开。正式版用固定证书签名，授权在更新后保留。
+- ssh 只能看到 `ssh` 本身，看不到远程机器上运行的程序，所以只能给 `ssh` 整体设一条规则。
+- 读取当前标签页需要“自动化”权限，第一次用到时系统会询问。拒绝后可以在 系统设置 › 隐私与安全性 › 自动化 里重新打开。
 - 没有设任何程序规则、或者关掉了开关时，不会读取终端，也不会请求权限。
 
-### 按输入框切换
+### 输入框
 
-主窗口工具栏的“按输入框切换”按钮里管理这一功能。它需要“辅助功能”权限来读取当前聚焦的是哪个输入框；只读取输入框的类型、标识和说明文字，**不读取输入的内容**。
+“输入框”页需要“辅助功能”权限来读取当前聚焦的是哪个输入框；只读取输入框的类型、标识和说明文字，**不读取输入的内容**。
 
-- 浏览器地址栏：默认打开，点进地址栏时切到“英文”，离开地址栏后按下面的规则切回。可以关掉，或改成别的输入法。支持 Safari、Chrome、Edge、Brave、Vivaldi、Opera、Chromium 和 Firefox。
-- 自定义输入框：
+- 浏览器地址栏：默认打开，点进地址栏时切到“英文”，离开后按下面的规则切回。可以关掉，或改成别的输入法。支持 Safari、Chrome、Edge、Brave、Vivaldi、Opera、Chromium 和 Firefox。
+- 记住某个输入框：
   1. 在目标 App 里点一下要记住的输入框，手动切到想用的输入法。
-  2. 点菜单栏图标，选“记住当前输入框：<App> 使用 <输入法>”。
+  2. 点菜单栏图标，选“记住当前输入框（App · 输入法）”。
   3. 以后焦点进入这个输入框就切到这个输入法。再记一次同一个输入框会覆盖原来的输入法。
-- 规则保存在同目录的 `field-rules.json`，在管理窗口里可以改名、改输入法或删除。
-- 优先级：终端里的程序规则 → 输入框规则（含地址栏）→ App 规则 → 默认输入法。
-- 离开输入框时，如果该 App 有自己的规则就按 App 规则切；没有的话切回进入输入框前的输入法（在输入框里手动切过输入法的话就保持不动）。
-- 和终端规则一样，只在“该用哪条规则”变化时切换；停在同一个输入框里手动切过的输入法不会被改回去；正在用语音输入法时先不切。
-- 只有设置了输入框规则的 App，或者打开了地址栏开关时的浏览器，才会被监听；没有授权时这一功能不生效，其余照常。
-- 授权方式：管理窗口里点“授权…”，或在“系统设置 → 隐私与安全性 → 辅助功能”里打开 AutoInputSwitcher。正式版用固定证书签名，授权在更新后保留。从 ad-hoc 签名的旧版本（0.2.15 及更早）升级上来时需要重新授权一次：在列表里选中 AutoInputSwitcher 点“−”删除，再点“授权…”重新添加。
-- 识别输入框靠的是 App 暴露的辅助功能信息：有的 App（部分 Electron 应用、网页里没有 id 的输入框）结构会随内容变化，可能认不准，这种情况只能退回 App 规则。
+- 记住的输入框保存在 `field-rules.json`，可以在“输入框”页改名、改输入法或删除。
+- 优先级：终端程序规则 → 输入框规则（含地址栏）→ 应用规则 → 默认输入法。
+- 离开输入框时，如果该 App 有自己的规则就按 App 规则切；没有的话切回进入输入框前的输入法（在输入框里手动切过的话就保持不动）。
+- 和终端程序一样，只在“该用哪条规则”变化时切换。
+- 只有记住了输入框的 App，或者打开了地址栏开关时的浏览器，才会被监听；没有授权时这一功能不生效，其余照常。
+- 识别输入框靠的是 App 暴露的辅助功能信息：有的 App（部分 Electron 应用、网页里没有 id 的输入框）结构会随内容变化，可能认不准，这种情况只能退回应用规则。
 
-排查问题时可以查看日志：
+### 规则文件出错时
 
-```bash
-log stream --level debug --predicate 'subsystem == "com.local.AutoInputSwitcher" AND category == "voice"'
-```
-
-主窗口齿轮按钮里提供“检查更新…”，用于手动检查更新；菜单栏菜单里也有同一项。
-
-规则文件读取失败时，应用会暂停规则编辑并在界面上持续提示，原文件不会被动过；可以点“重新读取”，或用“在 Finder 中显示规则文件”手动处理。保存失败时修改不会生效，界面保留修改前的状态。
+规则文件读取失败时，MoliSwitch 会暂停规则编辑并在窗口顶部持续提示，原文件不会被动过；可以点“重新读取”，或点“在 Finder 中显示”手动处理。保存失败时修改不会生效，界面保留修改前的状态。
 
 ## 安装
 
-从 [Releases](https://github.com/xiangyumou/AutoInputSwitcher/releases) 下载 `AutoInputSwitcher-macOS.dmg`，打开后把 `AutoInputSwitcher.app` 拖进“应用程序”。
+从 [Releases](https://github.com/xiangyumou/MoliSwitch/releases) 下载 `MoliSwitch-macOS.dmg`，打开后把 `MoliSwitch.app` 拖进“应用程序”。
 
-首次打开时系统会拦截：因为发布包使用自签名证书、没有做 Apple 公证，需要在“系统设置 → 隐私与安全性”里选择“仍要打开”。
-
-> **重要：** 首个带自动更新功能的版本必须手动安装一次。之前的版本没有更新器，无法自己升级到这一版；此后新版本才会自动提示。
+首次打开时系统会拦截：发布包使用自签名证书、没有做 Apple 公证，需要在 系统设置 › 隐私与安全性 里选择“仍要打开”。
 
 请把应用安装到“应用程序”文件夹再使用更新功能。如果直接从未挂载的只读磁盘映像里运行，应用会提示你先安装到“应用程序”。
+
+### 从 AutoInputSwitcher 升级
+
+MoliSwitch 换了名字和 Bundle ID，系统会把它当成一个新应用：
+
+- **需要手动安装一次。** AutoInputSwitcher 的自动更新不会升级到 MoliSwitch，请按上面的步骤下载安装。
+- **规则和设置会自动带过来。** MoliSwitch 第一次打开时，会把 AutoInputSwitcher 的应用规则、终端程序规则、输入框规则和各项设置复制过来（旧文件保留不动）。
+- **退出并删除旧版。** 两个同时运行会重复切换输入法。MoliSwitch 发现旧版在运行时会提示退出它；之后请在 系统设置 › 通用 › 登录项 里移除 AutoInputSwitcher，再把 `AutoInputSwitcher.app` 移到废纸篓。
+- **重新授权。** 辅助功能和自动化权限要给 MoliSwitch 重新授予一次，“登录时打开”也要在“通用”里重新打开。
 
 ## 自动更新
 
@@ -135,7 +121,7 @@ log stream --level debug --predicate 'subsystem == "com.local.AutoInputSwitcher"
 更新清单地址为：
 
 ```text
-https://github.com/xiangyumou/AutoInputSwitcher/releases/latest/download/appcast.xml
+https://github.com/xiangyumou/MoliSwitch/releases/latest/download/appcast.xml
 ```
 
 清单内部指向更新包的下载地址始终是具体版本 tag（形如 `build-<run>-<attempt>`），不会使用 `latest`，避免清单与安装包版本错配。应用校验 Ed25519 签名，并要求清单本身已签名（`SURequireSignedFeed = true`）。
@@ -146,9 +132,10 @@ https://github.com/xiangyumou/AutoInputSwitcher/releases/latest/download/appcast
 # 一次性完整校验：核心检查 + 单元测试 + 打包 + 产物校验
 ./Scripts/test.sh
 
-# 只构建应用 bundle
-./Scripts/build-app.sh
-open .build/AutoInputSwitcher.app
+# 只构建应用 bundle。本地试用时把 BUILD_NUMBER 设大，
+# 否则 Sparkle 会认为有新版本，把测试包替换成正式版
+BUILD_NUMBER=9999 ./Scripts/build-app.sh
+open .build/MoliSwitch.app
 
 # 单独运行测试
 swift test
@@ -176,8 +163,8 @@ swift test
 产物写入 `.build/dist`：
 
 ```text
-.build/dist/AutoInputSwitcher-macOS.dmg   # 手动安装用
-.build/dist/AutoInputSwitcher-macOS.zip   # Sparkle 更新用，ditto 打包以保留 bundle 结构
+.build/dist/MoliSwitch-macOS.dmg   # 手动安装用
+.build/dist/MoliSwitch-macOS.zip   # Sparkle 更新用，ditto 打包以保留 bundle 结构
 .build/dist/checksums.txt
 .build/dist/build-manifest.json
 ```
@@ -191,7 +178,7 @@ swift test
 ```bash
 # SPARKLE_TOOLS_DIR 指向含 bin/generate_keys 的 Sparkle 工具目录
 SPARKLE_TOOLS_DIR=.build/artifacts/sparkle/Sparkle/bin \
-  ./Scripts/setup-sparkle-keys.sh "$HOME/AutoInputSwitcher-sparkle-private-key.txt"
+  ./Scripts/setup-sparkle-keys.sh "$HOME/MoliSwitch-sparkle-private-key.txt"
 ```
 
 脚本会：
@@ -216,7 +203,7 @@ SPARKLE_TOOLS_DIR=.build/artifacts/sparkle/Sparkle/bin \
 ad-hoc 签名的应用每个版本签名都不同，系统会把更新后的版本当成新应用，辅助功能、自动化授权随之失效。正式版因此用一张固定的自签名证书签名：签名要求变成“Bundle ID + 证书”，跨版本不变，授权得以保留。它不被 Gatekeeper 信任，首次安装仍需“仍要打开”。
 
 ```bash
-./Scripts/setup-signing-certificate.sh "$HOME/AutoInputSwitcher-codesign"
+./Scripts/setup-signing-certificate.sh "$HOME/MoliSwitch-codesign"
 ```
 
 脚本会：
@@ -226,7 +213,7 @@ ad-hoc 签名的应用每个版本签名都不同，系统会把更新后的版�
 
 然后：
 
-1. 在仓库的 Actions secrets 里新增 `CODESIGN_P12_BASE64`（`base64 -i AutoInputSwitcher-codesign.p12` 的输出）和 `CODESIGN_P12_PASSWORD`（口令）；
+1. 在仓库的 Actions secrets 里新增 `CODESIGN_P12_BASE64`（`base64 -i MoliSwitch-codesign.p12` 的输出）和 `CODESIGN_P12_PASSWORD`（口令）；
 2. 把 `.p12` 与口令复制到离线介质另行备份，然后从本机删除；
 3. 提交 `Config/CodeSigningCertificate.txt`。
 
@@ -243,7 +230,7 @@ ad-hoc 签名的应用每个版本签名都不同，系统会把更新后的版�
 
 - 触发：PR、`main` 上的 push、手动触发。权限只有 `contents: read`。
 - 同一分支上的新构建会取消旧构建。
-- `checks`：`swift run AutoInputSwitcherCoreChecks` 与 `swift test`，**失败即阻断打包**（没有 `continue-on-error`）。
+- `checks`：`swift run MoliSwitchCoreChecks` 与 `swift test`，**失败即阻断打包**（没有 `continue-on-error`）。
 - `build`：下载固定版本的 Sparkle 工具（带 sha256 校验）；非 PR 构建把 `CODESIGN_P12_BASE64` 导入临时钥匙串并用固定证书签名（缺少 secret 直接失败），PR 构建拿不到 secrets，仍用 ad-hoc 签名。然后打包出 ZIP、DMG、`checksums.txt`、`build-manifest.json`，由 `verify-package.sh` 校验（非 PR 构建要求证书签名），最后删除临时钥匙串并上传为构建产物。
 - 只有 `main` 上的 push 或 `main` 上的手动构建才具备发布资格；PR 只做验证。
 
@@ -274,17 +261,19 @@ ad-hoc 签名的应用每个版本签名都不同，系统会把更新后的版�
 - Ed25519 更新签名保证的是“更新来自持有私钥的发布者”，不能替代 Gatekeeper 信任。
 - 暂不支持增量更新、多发布通道和自建更新服务器。
 - 按程序切换只支持“终端”和 iTerm2，其他终端（Ghostty、WezTerm、Warp 等）只按 App 规则切换。
-- 按输入框切换依赖辅助功能权限。从 0.2.15 及更早的 ad-hoc 版本升级后需要重新授权一次，之后的更新会保留授权。
+- 按输入框切换依赖辅助功能权限。正式版用固定证书签名，授权在更新后保留。
+- 从 AutoInputSwitcher 改名为 MoliSwitch 后 Bundle ID 变了，旧版无法自动更新过来，权限也要重新授予，见“从 AutoInputSwitcher 升级”。
 
 ## 项目结构
 
 ```text
-Sources/AutoInputSwitcherCore/       规则、配置存储、列表过滤（不依赖 AppKit / Sparkle）
-Sources/AutoInputSwitcherApp/        运行时、界面、系统集成、更新控制器
-Sources/AutoInputSwitcher/           可执行入口
-Sources/AutoInputSwitcherCoreChecks/ 核心逻辑自检
-Tests/                               单元测试
-Scripts/                             构建、打包、校验、appcast、密钥脚本
-Config/SparklePublicKey.txt          更新公钥（可公开、可提交）
+Sources/MoliSwitchCore/        规则、配置存储、列表过滤（不依赖 AppKit / Sparkle）
+Sources/MoliSwitchApp/         运行时、系统集成、更新控制器、旧版数据迁移
+Sources/MoliSwitchApp/Views/   主窗口界面（SwiftUI）
+Sources/MoliSwitch/            可执行入口
+Sources/MoliSwitchCoreChecks/  核心逻辑自检
+Tests/                         单元测试
+Scripts/                       构建、打包、校验、appcast、密钥脚本
+Config/SparklePublicKey.txt    更新公钥（可公开、可提交）
 ```
 

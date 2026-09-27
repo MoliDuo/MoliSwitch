@@ -23,7 +23,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FINGERPRINT_FILE="$ROOT_DIR/Config/CodeSigningCertificate.txt"
 OUTPUT_DIR="${1:-}"
-COMMON_NAME="AutoInputSwitcher Self-Signed Code Signing"
+COMMON_NAME="MoliSwitch Self-Signed Code Signing"
 # 系统自带的 LibreSSL 导出的 .p12 能被 security import 直接读取。
 OPENSSL=/usr/bin/openssl
 
@@ -34,7 +34,7 @@ fail() {
 
 if [ -z "$OUTPUT_DIR" ]; then
     echo "用法：Scripts/setup-signing-certificate.sh <导出目录>" >&2
-    echo "请传入一个尚不存在的目录，例如：\$HOME/AutoInputSwitcher-codesign" >&2
+    echo "请传入一个尚不存在的目录，例如：\$HOME/MoliSwitch-codesign" >&2
     exit 1
 fi
 
@@ -75,10 +75,10 @@ PASSWORD="$("$OPENSSL" rand -hex 24)"
     -in "$WORK_DIR/cert.pem" \
     -name "$COMMON_NAME" \
     -passout "pass:$PASSWORD" \
-    -out "$OUTPUT_DIR/AutoInputSwitcher-codesign.p12" \
+    -out "$OUTPUT_DIR/MoliSwitch-codesign.p12" \
     || fail "导出 .p12 失败"
 
-printf '%s\n' "$PASSWORD" > "$OUTPUT_DIR/AutoInputSwitcher-codesign.password"
+printf '%s\n' "$PASSWORD" > "$OUTPUT_DIR/MoliSwitch-codesign.password"
 
 FINGERPRINT="$("$OPENSSL" x509 -in "$WORK_DIR/cert.pem" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
 printf '%s' "$FINGERPRINT" | grep -Eq '^[0-9a-f]{40}$' || fail "证书指纹格式不正确：$FINGERPRINT"
@@ -95,6 +95,6 @@ $FINGERPRINT
 FINGERPRINT_EOF
 
 echo "已生成："
-echo "  $OUTPUT_DIR/AutoInputSwitcher-codesign.p12"
-echo "  $OUTPUT_DIR/AutoInputSwitcher-codesign.password"
+echo "  $OUTPUT_DIR/MoliSwitch-codesign.p12"
+echo "  $OUTPUT_DIR/MoliSwitch-codesign.password"
 echo "  $FINGERPRINT_FILE（指纹 $FINGERPRINT）"
