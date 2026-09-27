@@ -43,8 +43,9 @@ struct MainWindowView: View {
                     sidebarRow(.general)
                 }
             }
+            // The sidebar toggle also keeps the toolbar on pages without
+            // toolbar items, so the title stays in place when switching pages.
             .navigationSplitViewColumnWidth(200)
-            .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
                 .navigationTitle(selection.title)

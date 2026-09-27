@@ -19,13 +19,12 @@ struct TerminalPage: View {
                     }
                 }
             } footer: {
-                Text(
+                SectionFooter(
                     "运行下面的程序时切到对应输入法，退出后回到终端应用自己的设置。"
                         + "按程序名匹配（不区分大小写），tmux 里的程序也能识别；"
                         + "ssh 远程运行的程序无法识别，只能给 ssh 整体设置。"
                         + "第一次使用时系统会请求“自动化”权限。"
                 )
-                .foregroundStyle(.secondary)
             }
 
             Section("程序") {

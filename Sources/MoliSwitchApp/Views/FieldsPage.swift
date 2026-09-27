@@ -32,8 +32,7 @@ struct FieldsPage: View {
             } header: {
                 Text("浏览器地址栏")
             } footer: {
-                Text("支持 Safari、Chrome、Edge、Brave、Vivaldi、Opera 和 Firefox。")
-                    .foregroundStyle(.secondary)
+                SectionFooter("支持 Safari、Chrome、Edge、Brave、Vivaldi、Opera 和 Firefox。")
             }
 
             Section {
@@ -50,12 +49,11 @@ struct FieldsPage: View {
             } header: {
                 Text("已记住的输入框")
             } footer: {
-                Text(
+                SectionFooter(
                     "在要记住的输入框里点一下，切到想用的输入法，然后点菜单栏图标，选择“记住当前输入框”。"
                         + "光标进入输入框时切到对应输入法，离开后回到应用自己的设置。"
                         + "网页改版后可能认不出原来的输入框，需要重新记住。"
                 )
-                .foregroundStyle(.secondary)
             }
             .disabled(!runtime.fieldRuleEditingEnabled)
         }

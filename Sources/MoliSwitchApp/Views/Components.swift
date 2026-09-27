@@ -64,3 +64,20 @@ struct CheckForUpdatesButton: View {
         .disabled(!controller.canCheckForUpdates)
     }
 }
+
+/// Explanatory text under a form section. Leading-aligned like the rows above
+/// it; grouped forms align footers to the trailing edge by default.
+struct SectionFooter: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

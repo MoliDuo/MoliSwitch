@@ -985,7 +985,7 @@ final class AppRuntime: ObservableObject {
                     // Never register again while the system is waiting for the
                     // user to allow the login item.
                     loginStatus = StatusMessage(
-                        text: "开机自启正在等待系统批准，请在“系统设置 › 通用 › 登录项”中允许。",
+                        text: "“登录时打开”正在等待系统批准，请在“系统设置 › 通用 › 登录项”中允许。",
                         severity: .warning
                     )
                     refreshLaunchAtLoginStatus()
@@ -1002,7 +1002,7 @@ final class AppRuntime: ObservableObject {
         } catch {
             refreshLaunchAtLoginStatus()
             loginStatus = StatusMessage(
-                text: "开机自启设置失败：" + error.localizedDescription,
+                text: "“登录时打开”设置失败：" + error.localizedDescription,
                 severity: .error
             )
         }
@@ -1021,17 +1021,13 @@ final class AppRuntime: ObservableObject {
 
         switch launchAtLoginStatus {
         case .enabled:
-            loginStatus = StatusMessage(text: "已开启开机自启")
-        case .notRegistered:
-            loginStatus = StatusMessage(text: "已关闭开机自启")
+            loginStatus = StatusMessage(text: "已开启登录时打开")
+        case .notRegistered, .notFound:
+            // A fresh install that was never registered reports notFound.
+            loginStatus = StatusMessage(text: "已关闭登录时打开")
         case .requiresApproval:
             loginStatus = StatusMessage(
-                text: "开机自启正在等待系统批准，请在“系统设置 › 通用 › 登录项”中允许。",
-                severity: .warning
-            )
-        case .notFound:
-            loginStatus = StatusMessage(
-                text: "系统未找到登录项注册信息，请尝试重新开启开机自启。",
+                text: "“登录时打开”正在等待系统批准，请在“系统设置 › 通用 › 登录项”中允许。",
                 severity: .warning
             )
         }

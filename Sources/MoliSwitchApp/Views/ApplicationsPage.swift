@@ -5,7 +5,7 @@ import SwiftUI
 /// The input source of each installed application.
 struct ApplicationsPage: View {
     @ObservedObject var runtime: AppRuntime
-    @State private var loadedIcons: [String: NSImage] = [:]
+    @State private var icons = ApplicationIconCache()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,10 +35,6 @@ struct ApplicationsPage: View {
                 .help("重新扫描应用和输入法")
                 .disabled(runtime.isScanning)
             }
-        }
-        .onChange(of: runtime.iconCacheGeneration) { _, _ in
-            // Icons are cached by path and the scan invalidates them in one step.
-            loadedIcons.removeAll()
         }
     }
 
@@ -134,15 +130,8 @@ struct ApplicationsPage: View {
     private func icon(for application: InstalledApplication) -> some View {
         Group {
             if let url = application.url {
-                if let icon = loadedIcons[url.path] {
-                    Image(nsImage: icon)
-                        .resizable()
-                } else {
-                    Image(systemName: "app.fill")
-                        .resizable()
-                        .foregroundStyle(.tertiary)
-                        .onAppear { loadIcon(for: url) }
-                }
+                Image(nsImage: icons.icon(for: url, generation: runtime.iconCacheGeneration))
+                    .resizable()
             } else {
                 Image(systemName: "questionmark.app.dashed")
                     .resizable()
@@ -152,14 +141,27 @@ struct ApplicationsPage: View {
         .frame(width: 24, height: 24)
         .accessibilityHidden(true)
     }
+}
 
-    private func loadIcon(for url: URL) {
-        guard loadedIcons[url.path] == nil else {
-            return
+/// Application icons by path. A new scan generation drops them, since an
+/// update can change an application's icon.
+@MainActor
+final class ApplicationIconCache {
+    private var icons: [String: NSImage] = [:]
+    private var generation = 0
+
+    func icon(for url: URL, generation: Int) -> NSImage {
+        if generation != self.generation {
+            icons.removeAll()
+            self.generation = generation
+        }
+        if let icon = icons[url.path] {
+            return icon
         }
 
         let icon = NSWorkspace.shared.icon(forFile: url.path)
         icon.size = NSSize(width: 24, height: 24)
-        loadedIcons[url.path] = icon
+        icons[url.path] = icon
+        return icon
     }
 }

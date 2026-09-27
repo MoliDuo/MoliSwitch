@@ -27,8 +27,7 @@ struct GeneralPage: View {
                 Text("启动")
             } footer: {
                 if !runtime.showMenuBarIcon {
-                    Text("图标隐藏后，再次打开 " + AppInfo.name + " 即可回到这个窗口。")
-                        .foregroundStyle(.secondary)
+                    SectionFooter("图标隐藏后，再次打开 " + AppInfo.name + " 即可回到这个窗口。")
                 }
             }
 
@@ -48,11 +47,10 @@ struct GeneralPage: View {
             } header: {
                 Text("输入法")
             } footer: {
-                Text(
-                    "设置里选“中文”或“英文”时，切到这里的输入法。"
+                SectionFooter(
+                    "规则里选“中文”或“英文”时，切到这里的输入法。"
                         + "列表里没有你的输入法？先在 系统设置 › 键盘 › 输入法 中添加。"
                 )
-                .foregroundStyle(.secondary)
             }
 
             Section("关于") {
