@@ -4,14 +4,15 @@
 #   * 通用二进制（arm64 + x86_64）
 #   * 内嵌 Sparkle.framework（保留符号链接与辅助进程）
 #   * 写入自动更新所需的 Info.plist 键
-#   * 最终 ad-hoc 签名并校验
+#   * 签名（默认 ad-hoc，发布时用固定证书）并校验
 #
 # 可用环境变量：
 #   VERSION       CFBundleShortVersionString，默认 0.2.0
 #   BUILD_NUMBER  CFBundleVersion，默认 1
 #   CONFIGURATION Swift 构建配置，默认 release
 #   UNIVERSAL     1（默认）构建 arm64 + x86_64；0 只构建本机架构
-#   SIGN_IDENTITY 签名身份，默认 "-"（ad-hoc）
+#   SIGN_IDENTITY 签名身份，默认 "-"（ad-hoc）；也可以是证书 SHA-1 指纹
+#   SIGN_KEYCHAIN 只在这个钥匙串文件里查找签名身份，默认不限
 #   FEED_URL      appcast 地址，默认仓库 Releases 的 latest/download/appcast.xml
 
 set -euo pipefail
@@ -26,6 +27,7 @@ VERSION="${VERSION:-0.2.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 UNIVERSAL="${UNIVERSAL:-1}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-}"
 FEED_URL="${FEED_URL:-$DEFAULT_FEED_URL}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -265,9 +267,14 @@ otool -L "$BINARY_PATH" | grep 'Sparkle.framework' > /dev/null \
 # ------------------------------------------------------------------- 签名 --
 xattr -cr "$APP_PATH" 2>/dev/null || true
 
+SIGN_ARGUMENTS=(--force --sign "$SIGN_IDENTITY")
+if [ -n "$SIGN_KEYCHAIN" ]; then
+    SIGN_ARGUMENTS+=(--keychain "$SIGN_KEYCHAIN")
+fi
+
 sign_path() {
     echo "签名 $(basename "$1")"
-    codesign --force --sign "$SIGN_IDENTITY" "$1"
+    codesign "${SIGN_ARGUMENTS[@]}" "$1"
 }
 
 for xpc in "$FRAMEWORK_VERSION_PATH"/XPCServices/*.xpc; do

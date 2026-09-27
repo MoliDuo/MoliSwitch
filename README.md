@@ -81,7 +81,7 @@ AutoInputSwitcher 是一个原生 macOS 小工具：根据当前前台应用自�
   刚在终端里跑过、还没有规则的程序，会显示一个“添加刚才在终端里运行的…”快捷按钮。
 - tmux 里会识别当前窗格正在运行的程序。
 - ssh 只能看到 `ssh` 本身，远程机器上运行的程序看不到，所以只能给 `ssh` 整体设一条规则。
-- 读取当前标签页需要“自动化”权限：第一次在终端里用到规则时系统会询问。拒绝后可以在“系统设置 → 隐私与安全性 → 自动化”里重新打开。发布包是 ad-hoc 签名，每次更新后系统可能会再询问一次。
+- 读取当前标签页需要“自动化”权限：第一次在终端里用到规则时系统会询问。拒绝后可以在“系统设置 → 隐私与安全性 → 自动化”里重新打开。正式版用固定证书签名，授权在更新后保留。
 - 没有设任何程序规则、或者关掉了开关时，不会读取终端，也不会请求权限。
 
 ### 按输入框切换
@@ -98,7 +98,7 @@ AutoInputSwitcher 是一个原生 macOS 小工具：根据当前前台应用自�
 - 离开输入框时，如果该 App 有自己的规则就按 App 规则切；没有的话切回进入输入框前的输入法（在输入框里手动切过输入法的话就保持不动）。
 - 和终端规则一样，只在“该用哪条规则”变化时切换；停在同一个输入框里手动切过的输入法不会被改回去；正在用语音输入法时先不切。
 - 只有设置了输入框规则的 App，或者打开了地址栏开关时的浏览器，才会被监听；没有授权时这一功能不生效，其余照常。
-- 授权方式：管理窗口里点“授权…”，或在“系统设置 → 隐私与安全性 → 辅助功能”里打开 AutoInputSwitcher。发布包是 ad-hoc 签名，每次更新后可能需要在这里重新打开一次（先关再开）。
+- 授权方式：管理窗口里点“授权…”，或在“系统设置 → 隐私与安全性 → 辅助功能”里打开 AutoInputSwitcher。正式版用固定证书签名，授权在更新后保留。从 ad-hoc 签名的旧版本（0.2.15 及更早）升级上来时需要重新授权一次：在列表里选中 AutoInputSwitcher 点“−”删除，再点“授权…”重新添加。
 - 识别输入框靠的是 App 暴露的辅助功能信息：有的 App（部分 Electron 应用、网页里没有 id 的输入框）结构会随内容变化，可能认不准，这种情况只能退回 App 规则。
 
 排查问题时可以查看日志：
@@ -115,7 +115,7 @@ log stream --level debug --predicate 'subsystem == "com.local.AutoInputSwitcher"
 
 从 [Releases](https://github.com/xiangyumou/AutoInputSwitcher/releases) 下载 `AutoInputSwitcher-macOS.dmg`，打开后把 `AutoInputSwitcher.app` 拖进“应用程序”。
 
-首次打开时系统会拦截：因为发布包使用 ad-hoc 签名、没有做 Apple 公证，需要在“系统设置 → 隐私与安全性”里选择“仍要打开”。
+首次打开时系统会拦截：因为发布包使用自签名证书、没有做 Apple 公证，需要在“系统设置 → 隐私与安全性”里选择“仍要打开”。
 
 > **重要：** 首个带自动更新功能的版本必须手动安装一次。之前的版本没有更新器，无法自己升级到这一版；此后新版本才会自动提示。
 
@@ -162,7 +162,8 @@ swift test
 | `BUILD_NUMBER` | `1` | `CFBundleVersion` |
 | `CONFIGURATION` | `release` | Swift 构建配置 |
 | `UNIVERSAL` | `1` | `1` 构建 arm64 + x86_64，`0` 只构建本机架构 |
-| `SIGN_IDENTITY` | `-` | 签名身份（ad-hoc） |
+| `SIGN_IDENTITY` | `-` | 签名身份，默认 ad-hoc；也可以填证书 SHA-1 指纹 |
+| `SIGN_KEYCHAIN` | 空 | 证书所在的钥匙串，传给 `codesign --keychain` |
 | `FEED_URL` | 仓库 Releases 的 appcast 地址 | 覆盖 `SUFeedURL` |
 
 ## 打包
@@ -181,7 +182,7 @@ swift test
 .build/dist/build-manifest.json
 ```
 
-`verify-package.sh` 会检查：双架构、最低系统版本、Sparkle.framework 与辅助进程是否完整、签名是否有效、bundle 内是否残留指向 `.build` 的绝对加载路径、ZIP 与 DMG 是否包含同一份应用。
+`verify-package.sh` 会检查：双架构、最低系统版本、Sparkle.framework 与辅助进程是否完整、签名是否有效、bundle 内是否残留指向 `.build` 的绝对加载路径、ZIP 与 DMG 是否包含同一份应用。设置 `REQUIRE_SIGNING_CERTIFICATE=1` 时还会要求应用、Sparkle.framework 及其辅助进程都由 `Config/CodeSigningCertificate.txt` 记录的证书签名（CI 发布构建即如此）。
 
 ## 一次性生成 Sparkle 密钥
 
@@ -210,6 +211,30 @@ SPARKLE_TOOLS_DIR=.build/artifacts/sparkle/Sparkle/bin \
 - 私钥丢失后，已发布的版本无法再自动更新，用户只能重新手动安装。
 - `Config/SparklePublicKey.txt` 仍是占位值时，`build-app.sh` 会拒绝打包：无法验证更新的安装包不该发布。
 
+## 一次性生成代码签名证书
+
+ad-hoc 签名的应用每个版本签名都不同，系统会把更新后的版本当成新应用，辅助功能、自动化授权随之失效。正式版因此用一张固定的自签名证书签名：签名要求变成“Bundle ID + 证书”，跨版本不变，授权得以保留。它不被 Gatekeeper 信任，首次安装仍需“仍要打开”。
+
+```bash
+./Scripts/setup-signing-certificate.sh "$HOME/AutoInputSwitcher-codesign"
+```
+
+脚本会：
+
+1. 生成 10 年有效的代码签名证书，连同私钥导出为 `.p12`（随机口令，口令写在同目录的 `.password` 文件里）；
+2. 把证书 SHA-1 指纹写入 `Config/CodeSigningCertificate.txt`。
+
+然后：
+
+1. 在仓库的 Actions secrets 里新增 `CODESIGN_P12_BASE64`（`base64 -i AutoInputSwitcher-codesign.p12` 的输出）和 `CODESIGN_P12_PASSWORD`（口令）；
+2. 把 `.p12` 与口令复制到离线介质另行备份，然后从本机删除；
+3. 提交 `Config/CodeSigningCertificate.txt`。
+
+注意：
+
+- 证书不需要加入本机或 CI 的钥匙串信任；CI 把它导入一个临时钥匙串，按指纹签名，结束后删除。
+- 换证书会让所有用户重新授权一次辅助功能与自动化权限；证书丢失后只能换新证书。Sparkle 更新不受影响，它只要求 Ed25519 签名有效。
+
 ## CI/CD
 
 两个工作流分工明确：构建可取消，发布不可中断。
@@ -219,7 +244,7 @@ SPARKLE_TOOLS_DIR=.build/artifacts/sparkle/Sparkle/bin \
 - 触发：PR、`main` 上的 push、手动触发。权限只有 `contents: read`。
 - 同一分支上的新构建会取消旧构建。
 - `checks`：`swift run AutoInputSwitcherCoreChecks` 与 `swift test`，**失败即阻断打包**（没有 `continue-on-error`）。
-- `build`：下载固定版本的 Sparkle 工具（带 sha256 校验），打包出 ZIP、DMG、`checksums.txt`、`build-manifest.json`，然后由 `verify-package.sh` 校验，最后上传为构建产物。
+- `build`：下载固定版本的 Sparkle 工具（带 sha256 校验）；非 PR 构建把 `CODESIGN_P12_BASE64` 导入临时钥匙串并用固定证书签名（缺少 secret 直接失败），PR 构建拿不到 secrets，仍用 ad-hoc 签名。然后打包出 ZIP、DMG、`checksums.txt`、`build-manifest.json`，由 `verify-package.sh` 校验（非 PR 构建要求证书签名），最后删除临时钥匙串并上传为构建产物。
 - 只有 `main` 上的 push 或 `main` 上的手动构建才具备发布资格；PR 只做验证。
 
 **`.github/workflows/publish.yml`（Publish Release）**
@@ -245,11 +270,11 @@ SPARKLE_TOOLS_DIR=.build/artifacts/sparkle/Sparkle/bin \
 
 ## 已知限制
 
-- 发布包使用 ad-hoc 签名，未使用 Developer ID，也未做 Apple 公证：首次安装需要手动在“隐私与安全性”里允许。
+- 发布包使用自签名证书，未使用 Developer ID，也未做 Apple 公证：首次安装需要手动在“隐私与安全性”里允许。
 - Ed25519 更新签名保证的是“更新来自持有私钥的发布者”，不能替代 Gatekeeper 信任。
 - 暂不支持增量更新、多发布通道和自建更新服务器。
 - 按程序切换只支持“终端”和 iTerm2，其他终端（Ghostty、WezTerm、Warp 等）只按 App 规则切换。
-- 按输入框切换依赖辅助功能权限；ad-hoc 签名的新版本可能需要重新授权。
+- 按输入框切换依赖辅助功能权限。从 0.2.15 及更早的 ad-hoc 版本升级后需要重新授权一次，之后的更新会保留授权。
 
 ## 项目结构
 

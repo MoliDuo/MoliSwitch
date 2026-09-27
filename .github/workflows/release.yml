@@ -87,11 +87,47 @@ jobs:
           "$RUNNER_TEMP/sparkle-tools/bin/generate_appcast" --version || true
           echo "SPARKLE_TOOLS_DIR=$RUNNER_TEMP/sparkle-tools" >> "$GITHUB_ENV"
 
+      # 正式版用固定的自签名证书签名，指定要求跨版本不变，辅助功能等系统授权在更新后得以保留。
+      # PR 构建不接触证书，仍用 ad-hoc 签名。
+      - name: Import code signing certificate
+        if: github.event_name != 'pull_request'
+        env:
+          CODESIGN_P12_BASE64: ${{ secrets.CODESIGN_P12_BASE64 }}
+          CODESIGN_P12_PASSWORD: ${{ secrets.CODESIGN_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CODESIGN_P12_BASE64" ] || [ -z "$CODESIGN_P12_PASSWORD" ]; then
+            echo "缺少 CODESIGN_P12_BASE64 / CODESIGN_P12_PASSWORD，无法产出正式版。" >&2
+            echo "详见 README 的「一次性生成代码签名证书」一节。" >&2
+            exit 1
+          fi
+
+          keychain="$RUNNER_TEMP/codesign.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/codesign.p12"
+          printf '%s' "$CODESIGN_P12_BASE64" | base64 --decode > "$certificate"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$CODESIGN_P12_PASSWORD" -T /usr/bin/codesign > /dev/null
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          rm -f "$certificate"
+
+          fingerprint="$(grep -Eo '^[0-9a-f]{40}$' Config/CodeSigningCertificate.txt)"
+          echo "SIGN_IDENTITY=$fingerprint" >> "$GITHUB_ENV"
+          echo "SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "REQUIRE_SIGNING_CERTIFICATE=1" >> "$GITHUB_ENV"
+
       - name: Build ZIP and DMG
         run: ./Scripts/package-release.sh
 
       - name: Verify package
         run: ./Scripts/verify-package.sh
+
+      - name: Remove signing keychain
+        if: always() && github.event_name != 'pull_request'
+        run: security delete-keychain "$RUNNER_TEMP/codesign.keychain-db" 2> /dev/null || true
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

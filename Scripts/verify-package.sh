@@ -6,7 +6,8 @@
 # Sparkle.framework 结构、签名、加载路径，以及 ZIP 与 DMG 内容一致。
 #
 # 用法：Scripts/verify-package.sh [DIST_DIR]
-# 环境变量：VERSION、BUILD_NUMBER、UNIVERSAL（默认 1）
+# 环境变量：VERSION、BUILD_NUMBER、UNIVERSAL（默认 1）、
+#   REQUIRE_SIGNING_CERTIFICATE（1 时要求由 Config/CodeSigningCertificate.txt 里的证书签名）
 
 set -euo pipefail
 
@@ -14,6 +15,7 @@ APP_NAME="AutoInputSwitcher"
 BUNDLE_IDENTIFIER="com.local.AutoInputSwitcher"
 MINIMUM_SYSTEM_VERSION="14.0"
 UNIVERSAL="${UNIVERSAL:-1}"
+REQUIRE_SIGNING_CERTIFICATE="${REQUIRE_SIGNING_CERTIFICATE:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -24,6 +26,7 @@ DMG_PATH="$DIST_DIR/$APP_NAME-macOS.dmg"
 CHECKSUMS_PATH="$DIST_DIR/checksums.txt"
 MANIFEST_PATH="$DIST_DIR/build-manifest.json"
 PUBLIC_KEY_FILE="$ROOT_DIR/Config/SparklePublicKey.txt"
+SIGNING_CERTIFICATE_FILE="$ROOT_DIR/Config/CodeSigningCertificate.txt"
 
 WORK_DIR="$(mktemp -d)"
 MOUNT_POINT="$WORK_DIR/dmg"
@@ -318,6 +321,26 @@ for helper in \
     "$FRAMEWORK/Versions/B/XPCServices/Installer.xpc"; do
     check "签名有效：$(basename "$helper")" codesign --verify --strict "$helper"
 done
+
+# 正式版必须由固定证书签名：指定要求跨版本不变，系统授权才能在更新后保留。
+if [ "$REQUIRE_SIGNING_CERTIFICATE" = "1" ]; then
+    EXPECTED_FINGERPRINT="$(grep -Eo '^[0-9a-f]{40}$' "$SIGNING_CERTIFICATE_FILE" 2>/dev/null || true)"
+
+    if [ -z "$EXPECTED_FINGERPRINT" ]; then
+        fail "Config/CodeSigningCertificate.txt 中有证书指纹"
+    else
+        for signed in \
+            "$ZIP_APP" \
+            "$FRAMEWORK" \
+            "$FRAMEWORK/Versions/B/Autoupdate" \
+            "$FRAMEWORK/Versions/B/Updater.app" \
+            "$FRAMEWORK/Versions/B/XPCServices/Downloader.xpc" \
+            "$FRAMEWORK/Versions/B/XPCServices/Installer.xpc"; do
+            check_contains "由发布证书签名：$(basename "$signed")" \
+                "certificate leaf = H\"$EXPECTED_FINGERPRINT\"" codesign -d -r- "$signed"
+        done
+    fi
+fi
 
 section "加载路径"
 
