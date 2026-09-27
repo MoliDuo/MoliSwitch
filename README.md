@@ -92,7 +92,7 @@ MoliSwitch 是一个原生 macOS 小工具：根据当前前台应用自动切�
 
 ## 安装
 
-从 [Releases](https://github.com/xiangyumou/MoliSwitch/releases) 下载 `MoliSwitch-macOS.dmg`，打开后把 `MoliSwitch.app` 拖进“应用程序”。
+从 [Releases](https://github.com/MoliDuo/MoliSwitch/releases) 下载 `MoliSwitch-macOS.dmg`，打开后把 `MoliSwitch.app` 拖进“应用程序”。
 
 首次打开时系统会拦截：发布包使用自签名证书、没有做 Apple 公证，需要在 系统设置 › 隐私与安全性 里选择“仍要打开”。
 
@@ -121,7 +121,7 @@ MoliSwitch 换了名字和 Bundle ID，系统会把它当成一个新应用：
 更新清单地址为：
 
 ```text
-https://github.com/xiangyumou/MoliSwitch/releases/latest/download/appcast.xml
+https://github.com/MoliDuo/MoliSwitch/releases/latest/download/appcast.xml
 ```
 
 清单内部指向更新包的下载地址始终是具体版本 tag（形如 `build-<run>-<attempt>`），不会使用 `latest`，避免清单与安装包版本错配。应用校验 Ed25519 签名，并要求清单本身已签名（`SURequireSignedFeed = true`）。

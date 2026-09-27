@@ -20,7 +20,7 @@ set -euo pipefail
 APP_NAME="MoliSwitch"
 BUNDLE_IDENTIFIER="com.moli.MoliSwitch"
 MINIMUM_SYSTEM_VERSION="14.0"
-DEFAULT_FEED_URL="https://github.com/xiangyumou/MoliSwitch/releases/latest/download/appcast.xml"
+DEFAULT_FEED_URL="https://github.com/MoliDuo/MoliSwitch/releases/latest/download/appcast.xml"
 
 CONFIGURATION="${CONFIGURATION:-release}"
 VERSION="${VERSION:-0.2.0}"
