@@ -1,3 +1,4 @@
+import AutoInputSwitcherCore
 import Foundation
 
 /// Keyboard input sources. Main-actor isolated because the underlying Carbon
@@ -57,4 +58,21 @@ protocol ApplicationScanning: Sendable {
 protocol TerminalContextProviding: AnyObject {
     func supportsTerminal(bundleIdentifier: String) -> Bool
     func foregroundContext(bundleIdentifier: String) -> TerminalContextResult
+}
+
+/// Reads the text field that has keyboard focus in the frontmost application,
+/// through the Accessibility API. Only structural attributes are read, never
+/// the text in the field.
+@MainActor
+protocol FocusedFieldProviding: AnyObject {
+    /// Whether the user allowed AutoInputSwitcher to use Accessibility.
+    var isTrusted: Bool { get }
+    /// Shows the system prompt that leads to the Accessibility settings.
+    func requestTrust()
+    /// Reports the focused field of the frontmost application, which has to be
+    /// the one named, whenever focus moves, until stopObserving() is called.
+    func startObserving(bundleIdentifier: String, handler: @escaping @MainActor (FieldSignature?) -> Void)
+    func stopObserving()
+    /// The focused text field of the frontmost application, if any.
+    func currentField() -> FieldSignature?
 }

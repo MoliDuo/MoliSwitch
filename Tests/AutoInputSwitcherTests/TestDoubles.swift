@@ -365,3 +365,78 @@ final class FakeTerminalContextProvider: TerminalContextProviding {
         result = .found(TerminalContext(tty: tty, candidates: candidates))
     }
 }
+
+// MARK: - Focused fields
+
+final class FakeFieldRuleStore: FieldRuleStore, @unchecked Sendable {
+    let url = URL(fileURLWithPath: "/tmp/AutoInputSwitcherTests/field-rules.json")
+
+    private let lock = NSLock()
+    private var storedRules: [FieldRule]
+    private var loadError: Error?
+
+    init(rules: [FieldRule] = []) {
+        self.storedRules = rules
+    }
+
+    var rules: [FieldRule] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedRules
+    }
+
+    func failLoading(with error: Error?) {
+        lock.lock()
+        defer { lock.unlock() }
+        loadError = error
+    }
+
+    func load() throws -> [FieldRule] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let loadError {
+            throw loadError
+        }
+        return storedRules
+    }
+
+    func save(_ rules: [FieldRule]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        storedRules = rules
+    }
+}
+
+/// Reports whatever field the test put the cursor in.
+@MainActor
+final class FakeFocusedFieldProvider: FocusedFieldProviding {
+    var isTrusted = true
+    private(set) var requestTrustCount = 0
+    private(set) var observedBundleIdentifier: String?
+    private var field: FieldSignature?
+    private var handler: (@MainActor (FieldSignature?) -> Void)?
+
+    func requestTrust() {
+        requestTrustCount += 1
+    }
+
+    func startObserving(bundleIdentifier: String, handler: @escaping @MainActor (FieldSignature?) -> Void) {
+        observedBundleIdentifier = bundleIdentifier
+        self.handler = handler
+    }
+
+    func stopObserving() {
+        observedBundleIdentifier = nil
+        handler = nil
+    }
+
+    func currentField() -> FieldSignature? {
+        field
+    }
+
+    /// Moves keyboard focus, as a click into another field would.
+    func focus(_ field: FieldSignature?) {
+        self.field = field
+        handler?(field)
+    }
+}

@@ -7,6 +7,7 @@ struct MainWindowView: View {
     @State private var loadedIcons: [String: NSImage] = [:]
     @State private var showsSettings = false
     @State private var showsTerminalRules = false
+    @State private var showsFieldRules = false
     let onQuit: () -> Void
 
     var body: some View {
@@ -65,6 +66,17 @@ struct MainWindowView: View {
             .accessibilityLabel("终端里按程序切换")
             .sheet(isPresented: $showsTerminalRules) {
                 TerminalRulesSheet(runtime: runtime)
+            }
+
+            Button {
+                showsFieldRules = true
+            } label: {
+                Image(systemName: "character.cursor.ibeam")
+            }
+            .help("按输入框切换")
+            .accessibilityLabel("按输入框切换")
+            .sheet(isPresented: $showsFieldRules) {
+                FieldRulesSheet(runtime: runtime)
             }
 
             Button {
@@ -386,6 +398,177 @@ private struct TerminalRulesSheet: View {
     private func addNewCommand() {
         if runtime.addCommandRule(newCommand) {
             newCommand = ""
+        }
+    }
+}
+
+/// Rules for single text fields, and the built-in rule for browser address bars.
+private struct FieldRulesSheet: View {
+    @ObservedObject var runtime: AppRuntime
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("按输入框切换")
+                .font(.headline)
+
+            if !runtime.accessibilityTrusted {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    Text("需要“辅助功能”权限才能知道光标在哪个输入框。")
+                    Spacer(minLength: 0)
+                    Button("授权…") {
+                        runtime.requestAccessibilityTrust()
+                        runtime.openAccessibilitySystemSettings()
+                    }
+                }
+                .font(.callout)
+            }
+
+            HStack(spacing: 8) {
+                Toggle("浏览器地址栏使用", isOn: $runtime.addressBarSwitchingEnabled)
+
+                Picker("", selection: $runtime.addressBarInputSourceSelection) {
+                    ForEach(runtime.ruleRoleChoices) { choice in
+                        Text(choice.name).tag(choice.id)
+                    }
+
+                    let otherChoices = runtime.addressBarInputSourceChoices
+                    if !otherChoices.isEmpty {
+                        Divider()
+                        ForEach(otherChoices) { choice in
+                            Text(choice.name).tag(choice.id)
+                        }
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 180)
+                .disabled(!runtime.addressBarSwitchingEnabled)
+                .accessibilityLabel("浏览器地址栏的输入法")
+            }
+
+            Text("支持 Safari、Chrome、Edge、Brave、Vivaldi、Opera 和 Firefox。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            rulesList
+
+            Text(footer)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button("完成") {
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 500)
+        .onAppear {
+            runtime.refreshAccessibilityTrust()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // The user may come back from System Settings having allowed it.
+            runtime.refreshAccessibilityTrust()
+        }
+    }
+
+    @ViewBuilder
+    private var rulesList: some View {
+        if runtime.fieldRuleSet.rules.isEmpty {
+            Text("还没有记住的输入框。")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 60)
+        } else {
+            List {
+                ForEach(runtime.fieldRuleGroups, id: \.bundleIdentifier) { group in
+                    Section(group.applicationName) {
+                        ForEach(group.rules) { rule in
+                            FieldRuleRow(runtime: runtime, rule: rule)
+                        }
+                    }
+                }
+            }
+            .listStyle(.bordered(alternatesRowBackgrounds: true))
+            .frame(minHeight: 120, maxHeight: 260)
+            .disabled(!runtime.fieldRuleEditingEnabled)
+        }
+    }
+
+    private var footer: String {
+        "添加输入框：在那个输入框里点一下，切到想用的输入法，然后右键菜单栏图标，选“记住当前输入框”。"
+            + "光标进入输入框时切到对应输入法，离开后回到 App 自己的规则；没有规则时回到进入前的输入法。"
+            + "网页里的输入框可能随网页改版而认不出，需要重新记住。"
+    }
+}
+
+private struct FieldRuleRow: View {
+    @ObservedObject var runtime: AppRuntime
+    let rule: FieldRule
+    @State private var label = ""
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField("名称", text: $label)
+                .textFieldStyle(.plain)
+                .lineLimit(1)
+                .onSubmit(commitLabel)
+                .accessibilityLabel("输入框名称")
+
+            Spacer(minLength: 8)
+
+            Picker(
+                "",
+                selection: Binding(
+                    get: { runtime.selectedInputSourceID(for: rule) },
+                    set: { runtime.setInputSourceID($0, forFieldRule: rule.id) }
+                )
+            ) {
+                ForEach(runtime.ruleRoleChoices) { choice in
+                    Text(choice.name).tag(choice.id)
+                }
+
+                let otherChoices = runtime.inputSourceChoices(for: rule)
+                if !otherChoices.isEmpty {
+                    Divider()
+                    ForEach(otherChoices) { choice in
+                        Text(choice.name).tag(choice.id)
+                    }
+                }
+            }
+            .labelsHidden()
+            .frame(width: 160)
+            .accessibilityLabel(rule.label + " 的输入法")
+
+            Button {
+                runtime.removeFieldRule(rule.id)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("删除规则")
+            .accessibilityLabel("删除 " + rule.label + " 的规则")
+        }
+        .onAppear {
+            label = rule.label
+        }
+        .onChange(of: rule.label) { _, newValue in
+            label = newValue
+        }
+        .onDisappear(perform: commitLabel)
+    }
+
+    private func commitLabel() {
+        if label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            label = rule.label
+        } else if label != rule.label {
+            runtime.renameFieldRule(rule.id, to: label)
         }
     }
 }

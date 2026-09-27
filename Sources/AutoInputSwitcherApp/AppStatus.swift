@@ -32,6 +32,11 @@ struct StatusMessage: Equatable, Sendable {
         severity: .error
     )
 
+    static let fieldRulesReadFailure = StatusMessage(
+        text: "输入框规则读取失败，已暂停编辑；原文件未修改。",
+        severity: .error
+    )
+
     static let rulesSaveFailure = StatusMessage(
         text: "规则保存失败，修改未生效。",
         severity: .error

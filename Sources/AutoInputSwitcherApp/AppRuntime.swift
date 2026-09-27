@@ -11,6 +11,8 @@ final class AppRuntime: ObservableObject {
     static let englishInputSourceIDKey = "englishInputSourceID"
     static let terminalSwitchingEnabledKey = "terminalSwitchingEnabled"
     static let defaultInputSourceIDKey = "defaultInputSourceID"
+    static let addressBarSwitchingEnabledKey = "addressBarSwitchingEnabled"
+    static let addressBarInputSourceIDKey = "addressBarInputSourceID"
     /// Settings picker value for "detect the input source automatically".
     static let automaticInputSourceID = ""
     /// Picker value of an application without a rule, which switches to the
@@ -32,6 +34,10 @@ final class AppRuntime: ObservableObject {
     @Published private(set) var ruleSet = RuleSet()
     @Published private(set) var commandRuleSet = CommandRuleSet()
     @Published private(set) var commandRuleEditingEnabled = true
+    @Published private(set) var fieldRuleSet = FieldRuleSet()
+    @Published private(set) var fieldRuleEditingEnabled = true
+    /// Whether AutoInputSwitcher may use Accessibility to see the focused field.
+    @Published private(set) var accessibilityTrusted = false
     /// The program most recently seen in the foreground of a terminal tab.
     @Published private(set) var lastTerminalContext: TerminalContext?
     /// True when the user did not allow reading the terminal's active tab.
@@ -96,6 +102,22 @@ final class AppRuntime: ObservableObject {
             adoptRole(Self.englishRuleID, forRulesUsing: previous)
         }
     }
+    /// Whether the address bar of a browser switches to its own input source.
+    @Published var addressBarSwitchingEnabled: Bool {
+        didSet {
+            guard addressBarSwitchingEnabled != oldValue else { return }
+            defaults.set(addressBarSwitchingEnabled, forKey: Self.addressBarSwitchingEnabledKey)
+            refreshFieldObservation()
+        }
+    }
+    /// The input source of browser address bars: a role or an input source.
+    @Published var addressBarInputSourceSelection: String {
+        didSet {
+            guard addressBarInputSourceSelection != oldValue else { return }
+            defaults.set(addressBarInputSourceSelection, forKey: Self.addressBarInputSourceIDKey)
+            refreshFieldObservation()
+        }
+    }
     /// What applications without a rule switch to: noSwitchInputSourceID, a
     /// role, or an input source.
     @Published var defaultInputSourceSelection: String {
@@ -111,6 +133,8 @@ final class AppRuntime: ObservableObject {
 
     private let store: any RuleStore
     private let commandStore: any CommandRuleStore
+    private let fieldStore: any FieldRuleStore
+    private let focusedFieldProvider: any FocusedFieldProviding
     private let terminalContextProvider: any TerminalContextProviding
     private let terminalPollInterval: TimeInterval
     private let inputSourceManager: any InputSourceManaging
@@ -140,10 +164,22 @@ final class AppRuntime: ObservableObject {
     /// Key of the rule applied last, so a rule is applied once per context and a
     /// manual switch inside the same program is kept.
     private var appliedRuleKey: String?
+    /// The terminal program the rule in effect was chosen for.
+    private var terminalContextInEffect: TerminalContext?
+
+    /// The application whose focused field is followed, and that field.
+    private var fieldApplication: RunningApplicationInfo?
+    private var focusedField: FieldSignature?
+    /// What to return to when focus leaves a field that has a rule of its own
+    /// and nothing else applies: the input source used before the field, as long
+    /// as the one the field switched to is still selected.
+    private var fieldRestore: (previousID: String, fieldID: String?)?
 
     init(
         store: any RuleStore = JSONRuleStore.applicationSupportStore(),
         commandStore: any CommandRuleStore = JSONCommandRuleStore.applicationSupportStore(),
+        fieldStore: any FieldRuleStore = JSONFieldRuleStore.applicationSupportStore(),
+        focusedFieldProvider: any FocusedFieldProviding = SystemFocusedFieldProvider(),
         terminalContextProvider: any TerminalContextProviding = SystemTerminalContextProvider(),
         terminalPollInterval: TimeInterval = 0.5,
         inputSourceManager: any InputSourceManaging = SystemInputSourceManager(),
@@ -160,6 +196,8 @@ final class AppRuntime: ObservableObject {
     ) {
         self.store = store
         self.commandStore = commandStore
+        self.fieldStore = fieldStore
+        self.focusedFieldProvider = focusedFieldProvider
         self.terminalContextProvider = terminalContextProvider
         self.terminalPollInterval = terminalPollInterval
         self.inputSourceManager = inputSourceManager
@@ -184,6 +222,10 @@ final class AppRuntime: ObservableObject {
             ?? Self.automaticInputSourceID
         self.defaultInputSourceSelection = defaults.string(forKey: Self.defaultInputSourceIDKey)
             ?? Self.noSwitchInputSourceID
+        self.addressBarSwitchingEnabled = defaults.object(forKey: Self.addressBarSwitchingEnabledKey) as? Bool ?? true
+        self.addressBarInputSourceSelection = defaults.string(forKey: Self.addressBarInputSourceIDKey)
+            ?? Self.englishRuleID
+        self.accessibilityTrusted = focusedFieldProvider.isTrusted
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
     }
@@ -218,6 +260,7 @@ final class AppRuntime: ObservableObject {
 
         inputSourceManager.stopMonitoringEnabledSources()
         stopTerminalPolling()
+        stopFollowingFields()
         stopVoiceRestore()
         updateController?.stop()
     }
@@ -227,7 +270,7 @@ final class AppRuntime: ObservableObject {
     /// True when the rule file exists but could not be read, so editing is paused
     /// and the original file is left untouched.
     var hasStorageFailure: Bool {
-        !ruleEditingEnabled || !commandRuleEditingEnabled
+        !ruleEditingEnabled || !commandRuleEditingEnabled || !fieldRuleEditingEnabled
     }
 
     func reloadRulesFromDisk() {
@@ -252,11 +295,15 @@ final class AppRuntime: ObservableObject {
             ruleEditingEnabled = false
             storageStatus = .rulesReadFailure
             loadCommandRules()
+            loadFieldRules()
             return
         }
 
         if !loadCommandRules() {
             storageStatus = .commandRulesReadFailure
+        }
+        if !loadFieldRules() {
+            storageStatus = .fieldRulesReadFailure
         }
     }
 
@@ -272,8 +319,29 @@ final class AppRuntime: ObservableObject {
         }
     }
 
+    @discardableResult
+    private func loadFieldRules() -> Bool {
+        do {
+            fieldRuleSet = FieldRuleSet(normalizing: try fieldStore.load())
+            fieldRuleEditingEnabled = true
+            return true
+        } catch {
+            fieldRuleEditingEnabled = false
+            return false
+        }
+    }
+
     func revealRulesFileInFinder() {
-        let url = !ruleEditingEnabled || commandRuleEditingEnabled ? store.url : commandStore.url
+        let url: URL
+        if !ruleEditingEnabled {
+            url = store.url
+        } else if !commandRuleEditingEnabled {
+            url = commandStore.url
+        } else if !fieldRuleEditingEnabled {
+            url = fieldStore.url
+        } else {
+            url = store.url
+        }
         let fileManager = FileManager.default
 
         if fileManager.fileExists(atPath: url.path) {
@@ -420,7 +488,10 @@ final class AppRuntime: ObservableObject {
     }
 
     private var defaultInputSourceDescription: String {
-        let selection = defaultInputSourceSelection
+        inputSourceDescription(for: defaultInputSourceSelection)
+    }
+
+    private func inputSourceDescription(for selection: String) -> String {
         if selection == Self.noSwitchInputSourceID {
             return "不切换"
         }
@@ -651,6 +722,157 @@ final class AppRuntime: ObservableObject {
         }
     }
 
+    // MARK: - Field rules
+
+    /// What "记住当前输入框" in the menu bar would do right now.
+    enum FieldCaptureState: Equatable {
+        /// Accessibility has not been allowed yet.
+        case needsAccessibility
+        /// No text field of another application has keyboard focus.
+        case noField
+        case ready(applicationName: String, inputSourceName: String)
+    }
+
+    private struct FieldCapture {
+        let application: RunningApplicationInfo
+        let field: FieldSignature
+        let target: (id: String, name: String)
+        let inputSourceName: String
+    }
+
+    func fieldCaptureState() -> FieldCaptureState {
+        refreshAccessibilityTrust()
+        guard accessibilityTrusted else { return .needsAccessibility }
+        guard let capture = currentFieldCapture() else { return .noField }
+        return .ready(applicationName: capture.application.name, inputSourceName: capture.inputSourceName)
+    }
+
+    private func currentFieldCapture() -> FieldCapture? {
+        guard
+            let application = currentApplication,
+            let field = focusedFieldProvider.currentField(),
+            let inputSource = inputSourceManager.currentInputSource(),
+            let target = ruleTarget(forPickerValue: pickerValue(forRuleInputSourceID: inputSource.id))
+        else {
+            return nil
+        }
+        return FieldCapture(application: application, field: field, target: target, inputSourceName: inputSource.name)
+    }
+
+    /// Saves the input source selected now for the focused field of the
+    /// frontmost application. A field that already has a rule gets the new
+    /// input source.
+    @discardableResult
+    func rememberFocusedField() -> Bool {
+        guard fieldRuleEditingEnabled else {
+            storageStatus = .fieldRulesReadFailure
+            return false
+        }
+        refreshAccessibilityTrust()
+        guard accessibilityTrusted, let capture = currentFieldCapture() else { return false }
+
+        let bundleIdentifier = capture.application.bundleIdentifier
+        var rule = fieldRuleSet.rule(forBundleIdentifier: bundleIdentifier, matching: capture.field)
+            ?? FieldRule(
+                bundleIdentifier: bundleIdentifier,
+                applicationName: capture.application.name,
+                label: capture.field.suggestedLabel,
+                signature: capture.field,
+                inputSourceID: capture.target.id,
+                inputSourceName: capture.target.name
+            )
+        rule.applicationName = capture.application.name
+        rule.inputSourceID = capture.target.id
+        rule.inputSourceName = capture.target.name
+
+        var candidate = fieldRuleSet
+        candidate.upsert(rule)
+        guard candidate != fieldRuleSet else { return true }
+        return commitFieldRules(candidate)
+    }
+
+    /// Field rules grouped by application, in the order of the application names.
+    var fieldRuleGroups: [(bundleIdentifier: String, applicationName: String, rules: [FieldRule])] {
+        var groups: [(bundleIdentifier: String, applicationName: String, rules: [FieldRule])] = []
+        for rule in fieldRuleSet.rules {
+            if let index = groups.firstIndex(where: { $0.bundleIdentifier == rule.bundleIdentifier }) {
+                groups[index].rules.append(rule)
+            } else {
+                let name = rule.applicationName.trimmingCharacters(in: .whitespacesAndNewlines)
+                groups.append((rule.bundleIdentifier, name.isEmpty ? rule.bundleIdentifier : name, [rule]))
+            }
+        }
+        return groups.sorted {
+            $0.applicationName.localizedCaseInsensitiveCompare($1.applicationName) == .orderedAscending
+        }
+    }
+
+    func selectedInputSourceID(for rule: FieldRule) -> String {
+        pickerValue(forRuleInputSourceID: rule.inputSourceID)
+    }
+
+    func inputSourceChoices(for rule: FieldRule) -> [InputSourceChoice] {
+        inputSourceChoices(selectedID: selectedInputSourceID(for: rule), savedName: rule.inputSourceName)
+    }
+
+    /// Settings entries for the address bar besides the roles.
+    var addressBarInputSourceChoices: [InputSourceChoice] {
+        inputSourceChoices(selectedID: addressBarInputSourceSelection, savedName: nil)
+    }
+
+    func setInputSourceID(_ inputSourceID: String, forFieldRule id: FieldRule.ID) {
+        updateFieldRule(id) { rule in
+            guard let target = ruleTarget(forPickerValue: inputSourceID) else { return }
+            rule.inputSourceID = target.id
+            rule.inputSourceName = target.name
+        }
+    }
+
+    func renameFieldRule(_ id: FieldRule.ID, to label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        updateFieldRule(id) { $0.label = trimmed }
+    }
+
+    func removeFieldRule(_ id: FieldRule.ID) {
+        guard fieldRuleEditingEnabled else {
+            storageStatus = .fieldRulesReadFailure
+            return
+        }
+
+        var candidate = fieldRuleSet
+        guard candidate.remove(id: id) != nil else { return }
+        commitFieldRules(candidate)
+    }
+
+    private func updateFieldRule(_ id: FieldRule.ID, _ change: (inout FieldRule) -> Void) {
+        guard fieldRuleEditingEnabled else {
+            storageStatus = .fieldRulesReadFailure
+            return
+        }
+        guard var rule = fieldRuleSet.rule(id: id) else { return }
+
+        change(&rule)
+        var candidate = fieldRuleSet
+        candidate.upsert(rule)
+        guard candidate != fieldRuleSet else { return }
+        commitFieldRules(candidate)
+    }
+
+    @discardableResult
+    private func commitFieldRules(_ candidate: FieldRuleSet) -> Bool {
+        do {
+            try fieldStore.save(candidate.rules)
+            fieldRuleSet = candidate
+            storageStatus = .rulesSaved
+            refreshFieldObservation()
+            return true
+        } catch {
+            storageStatus = .rulesSaveFailure
+            return false
+        }
+    }
+
     func openAutomationSystemSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
             NSWorkspace.shared.open(url)
@@ -749,6 +971,22 @@ final class AppRuntime: ObservableObject {
 
         if defaultInputSourceSelection == previous.id {
             defaultInputSourceSelection = roleID
+        }
+        if addressBarInputSourceSelection == previous.id {
+            addressBarInputSourceSelection = roleID
+        }
+
+        if fieldRuleEditingEnabled {
+            var fieldCandidate = fieldRuleSet
+            for rule in fieldRuleSet.rules where rule.inputSourceID == previous.id {
+                var updated = rule
+                updated.inputSourceID = roleID
+                updated.inputSourceName = roleName
+                fieldCandidate.upsert(updated)
+            }
+            if fieldCandidate != fieldRuleSet {
+                commitFieldRules(fieldCandidate)
+            }
         }
 
         guard ruleEditingEnabled else { return }
@@ -929,6 +1167,7 @@ final class AppRuntime: ObservableObject {
             currentApplication = nil
             currentInputSource = inputSourceManager.currentInputSource()
             updateTerminalPolling(for: nil)
+            stopFollowingFields()
             return
         }
 
@@ -941,30 +1180,39 @@ final class AppRuntime: ObservableObject {
     }
 
     /// Applies the rule for an application that just became active, and starts
-    /// following the program in its active tab when it is a terminal.
+    /// following the program in its active tab when it is a terminal, or the
+    /// focused field when a field of the application has a rule.
     func applyRuleIfNeeded(for app: RunningApplicationInfo) {
+        if currentApplication != app {
+            currentApplication = app
+        }
+
         var context: TerminalContext?
         if case .found(let found)? = terminalContext(for: app) {
             context = found
         }
+        terminalContextInEffect = context
+        fieldRestore = nil
+        followFields(of: app)
 
-        let rule = activeRule(for: app, context: context)
-        appliedRuleKey = rule?.key
-        switchInputSource(to: rule)
+        apply(activeRule(for: app))
         updateTerminalPolling(for: app)
     }
 
     /// The rule in effect: the command rule for the program in the active
-    /// terminal tab, otherwise the rule of the application, otherwise the
-    /// default input source.
+    /// terminal tab, otherwise the rule of the focused field, otherwise the rule
+    /// of the application, otherwise the default input source.
     private struct ActiveRule {
         /// Identifies the context the rule was chosen for.
         let key: String
         let inputSourceID: String
         let inputSourceName: String
+        /// True for the rule of a single field, including the address bar.
+        var isFieldRule = false
     }
 
-    private func activeRule(for app: RunningApplicationInfo, context: TerminalContext?) -> ActiveRule? {
+    private func activeRule(for app: RunningApplicationInfo) -> ActiveRule? {
+        let context = terminalContextInEffect
         let tab = context.map { "@" + $0.tty } ?? ""
 
         if let context, let rule = commandRuleSet.rule(matchingAnyOf: context.candidates) {
@@ -973,6 +1221,10 @@ final class AppRuntime: ObservableObject {
                 inputSourceID: rule.inputSourceID,
                 inputSourceName: rule.inputSourceName
             )
+        }
+
+        if let rule = activeFieldRule(for: app) {
+            return rule
         }
 
         if let rule = ruleSet.rule(forBundleIdentifier: app.bundleIdentifier) {
@@ -991,6 +1243,55 @@ final class AppRuntime: ObservableObject {
             inputSourceID: defaultID,
             inputSourceName: defaultInputSourceDescription
         )
+    }
+
+    /// Makes a rule the one in effect and switches to its input source. Leaving a
+    /// field whose rule switched the input source, for a place without any rule,
+    /// returns to the input source used before the field.
+    private func apply(_ rule: ActiveRule?) {
+        let previousKey = appliedRuleKey
+        appliedRuleKey = rule?.key
+
+        if let rule, rule.isFieldRule {
+            if fieldRestore == nil, let currentID = inputSourceManager.currentInputSource()?.id {
+                fieldRestore = (currentID, nil)
+            }
+            switchInputSource(to: rule)
+            fieldRestore?.fieldID = targetInputSourceID(forRuleID: rule.inputSourceID)
+            return
+        }
+
+        let restore = fieldRestore
+        fieldRestore = nil
+
+        if
+            rule == nil,
+            previousKey != nil,
+            let restore,
+            restore.previousID != restore.fieldID,
+            restore.previousID != effectiveVoiceInputSource?.id,
+            inputSourceManager.currentInputSource()?.id == restore.fieldID
+        {
+            let name = inputSources.first { $0.id == restore.previousID }?.name ?? restore.previousID
+            switchInputSource(
+                to: ActiveRule(key: "restore", inputSourceID: restore.previousID, inputSourceName: name)
+            )
+            return
+        }
+
+        switchInputSource(to: rule)
+    }
+
+    /// Applies the rule for the current context when it differs from the one in
+    /// effect, which keeps a manual switch inside the same context.
+    private func reapplyIfContextChanged(for app: RunningApplicationInfo) {
+        let rule = activeRule(for: app)
+        guard rule?.key != appliedRuleKey else { return }
+        // Switching now would cut off a voice input method that is listening;
+        // the change is applied once it switched back.
+        guard !isVoiceInputSourceSelected else { return }
+
+        apply(rule)
     }
 
     private func switchInputSource(to rule: ActiveRule?) {
@@ -1026,6 +1327,102 @@ final class AppRuntime: ObservableObject {
         }
 
         currentInputSource = inputSourceManager.currentInputSource()
+    }
+
+    // MARK: - Focused fields
+
+    /// Focus is only followed where a field rule could apply, so applications
+    /// without one are never touched through Accessibility.
+    private func followsFields(_ app: RunningApplicationInfo) -> Bool {
+        accessibilityTrusted
+            && (fieldRuleSet.hasRules(forBundleIdentifier: app.bundleIdentifier)
+                || (addressBarSwitchingEnabled && AddressBarDetector.isBrowser(bundleIdentifier: app.bundleIdentifier)))
+    }
+
+    private func followFields(of app: RunningApplicationInfo) {
+        refreshAccessibilityTrust()
+
+        guard followsFields(app) else {
+            stopFollowingFields()
+            return
+        }
+
+        fieldApplication = app
+        focusedFieldProvider.startObserving(bundleIdentifier: app.bundleIdentifier) { [weak self] field in
+            self?.handleFocusedFieldChanged(field)
+        }
+        focusedField = focusedFieldProvider.currentField()
+    }
+
+    private func stopFollowingFields() {
+        guard fieldApplication != nil else { return }
+        focusedFieldProvider.stopObserving()
+        fieldApplication = nil
+        focusedField = nil
+    }
+
+    private func handleFocusedFieldChanged(_ field: FieldSignature?) {
+        guard let app = fieldApplication, app == currentApplication, field != focusedField else { return }
+        focusedField = field
+        reapplyIfContextChanged(for: app)
+    }
+
+    /// Starts or stops following fields after the rules or settings changed, and
+    /// applies what changed for the current field.
+    private func refreshFieldObservation() {
+        guard let app = currentApplication else { return }
+
+        if followsFields(app) {
+            if fieldApplication != app {
+                followFields(of: app)
+            }
+        } else {
+            stopFollowingFields()
+        }
+        reapplyIfContextChanged(for: app)
+    }
+
+    private func activeFieldRule(for app: RunningApplicationInfo) -> ActiveRule? {
+        guard fieldApplication == app, let field = focusedField else { return nil }
+
+        if let rule = fieldRuleSet.rule(forBundleIdentifier: app.bundleIdentifier, matching: field) {
+            return ActiveRule(
+                key: "field:" + rule.id.uuidString + "=" + rule.inputSourceID,
+                inputSourceID: rule.inputSourceID,
+                inputSourceName: rule.inputSourceName,
+                isFieldRule: true
+            )
+        }
+
+        if addressBarSwitchingEnabled, AddressBarDetector.isAddressBar(bundleIdentifier: app.bundleIdentifier, field: field) {
+            let id = addressBarInputSourceSelection
+            return ActiveRule(
+                key: "addressbar:" + app.bundleIdentifier + "=" + id,
+                inputSourceID: id,
+                inputSourceName: inputSourceDescription(for: id),
+                isFieldRule: true
+            )
+        }
+
+        return nil
+    }
+
+    func refreshAccessibilityTrust() {
+        let trusted = focusedFieldProvider.isTrusted
+        if accessibilityTrusted != trusted {
+            accessibilityTrusted = trusted
+        }
+    }
+
+    func requestAccessibilityTrust() {
+        focusedFieldProvider.requestTrust()
+        refreshAccessibilityTrust()
+    }
+
+    func openAccessibilitySystemSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Programs in the terminal
@@ -1086,25 +1483,17 @@ final class AppRuntime: ObservableObject {
             return
         }
 
-        let context: TerminalContext?
         switch result {
         case .found(let found):
-            context = found
+            terminalContextInEffect = found
         case .denied:
-            context = nil
+            terminalContextInEffect = nil
         case .unavailable:
             // Keep the current rule instead of falling back for a moment.
             return
         }
 
-        let rule = activeRule(for: app, context: context)
-        guard rule?.key != appliedRuleKey else { return }
-        // Switching now would cut off a voice input method that is listening;
-        // the change is applied once it switched back.
-        guard !isVoiceInputSourceSelected else { return }
-
-        appliedRuleKey = rule?.key
-        switchInputSource(to: rule)
+        reapplyIfContextChanged(for: app)
     }
 
     private var isVoiceInputSourceSelected: Bool {
@@ -1206,6 +1595,12 @@ final class AppRuntime: ObservableObject {
     private func handleSelectedInputSourceChanged() {
         currentInputSource = inputSourceManager.currentInputSource()
         handleVoiceEvent(.sourceChanged(id: normalizedVoiceSourceID(currentInputSource?.id)))
+
+        // Focus may have moved to a field with a rule of its own while the voice
+        // input method was listening.
+        if let fieldApplication, fieldApplication == currentApplication {
+            reapplyIfContextChanged(for: fieldApplication)
+        }
     }
 
     /// Input modes of the voice input method (for example its pinyin mode) count

@@ -20,6 +20,8 @@ struct CoreChecks {
         try testVoiceInputRestorerRestoresAfterOverlayDisappears()
         try testVoiceInputRestorerIgnoresManualSwitchWithoutMicrophone()
         try testVoiceInputRestorerStopsWhenSourceChangesAway()
+        try testFieldRuleMatchesTheSavedField()
+        try testAddressBarDetectorRecognisesSafariAndChrome()
         print("Core checks passed")
     }
 
@@ -324,6 +326,42 @@ struct CoreChecks {
             [.cancelDeadline, .stopOverlayWatch]
         )
         try expectEqual(restorer.handle(.deadlineReached, now: start.addingTimeInterval(9)), [])
+    }
+
+    private static func testFieldRuleMatchesTheSavedField() throws {
+        let searchField = FieldSignature(
+            role: "AXTextField",
+            subrole: "AXSearchField",
+            descriptor: "搜索",
+            ancestorRoles: ["AXGroup", "AXWindow"]
+        )
+        let rule = FieldRule(
+            bundleIdentifier: "com.tencent.xinWeChat",
+            applicationName: "WeChat",
+            label: searchField.suggestedLabel,
+            signature: searchField,
+            inputSourceID: "role.english",
+            inputSourceName: "英文"
+        )
+        let ruleSet = FieldRuleSet(normalizing: [rule, rule])
+        var chatField = searchField
+        chatField.descriptor = "消息"
+
+        try expectEqual(ruleSet.rules.count, 1)
+        try expectEqual(ruleSet.rule(forBundleIdentifier: "com.tencent.xinWeChat", matching: searchField), rule)
+        try expectNil(ruleSet.rule(forBundleIdentifier: "com.tencent.xinWeChat", matching: chatField))
+        try expectNil(ruleSet.rule(forBundleIdentifier: "com.apple.Notes", matching: searchField))
+    }
+
+    private static func testAddressBarDetectorRecognisesSafariAndChrome() throws {
+        let safari = FieldSignature(role: "AXTextField", identifier: "WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD")
+        let omnibox = FieldSignature(role: "AXTextField", descriptor: "Address and search bar")
+        let pageSearch = FieldSignature(role: "AXTextField", descriptor: "Address and search bar", isInWebArea: true)
+
+        try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.apple.Safari", field: safari), true)
+        try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.google.Chrome", field: omnibox), true)
+        try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.google.Chrome", field: pageSearch), false)
+        try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.apple.Notes", field: safari), false)
     }
 
     private static func expectEqual<T: Equatable>(_ actual: T, _ expected: T) throws {

@@ -56,6 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             commandStore: JSONCommandRuleStore(
                 url: ruleStore.url.deletingLastPathComponent().appendingPathComponent("command-rules.json")
             ),
+            fieldStore: JSONFieldRuleStore(
+                url: ruleStore.url.deletingLastPathComponent().appendingPathComponent("field-rules.json")
+            ),
             defaults: defaults,
             updateController: UpdateController.makeForHostBundle()
         )
@@ -235,6 +238,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             )
         )
         menu.addItem(.separator())
+        menu.addItem(makeRememberFieldItem())
+        menu.addItem(.separator())
         menu.addItem(
             makeMenuItem(
                 title: "检查更新…",
@@ -259,6 +264,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             )
         )
         return menu
+    }
+
+    /// Opening a status item menu does not activate AutoInputSwitcher, so the
+    /// field the user was typing in still has keyboard focus.
+    private func makeRememberFieldItem() -> NSMenuItem {
+        switch runtime?.fieldCaptureState() ?? .noField {
+        case .ready(let applicationName, let inputSourceName):
+            return makeMenuItem(
+                title: "记住当前输入框：" + applicationName + " 使用 " + inputSourceName,
+                action: #selector(rememberFocusedField),
+                keyEquivalent: ""
+            )
+        case .needsAccessibility:
+            return makeMenuItem(
+                title: "记住当前输入框（需要辅助功能权限）…",
+                action: #selector(requestAccessibilityFromMenu),
+                keyEquivalent: ""
+            )
+        case .noField:
+            // No action, so the item is shown disabled.
+            return NSMenuItem(title: "记住当前输入框：先点一下要记住的输入框", action: nil, keyEquivalent: "")
+        }
     }
 
     /// Menu item targets are always set explicitly so the actions never depend on
@@ -296,6 +323,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func showWindowFromMenu() {
         showWindow()
+    }
+
+    @objc private func rememberFocusedField() {
+        runtime?.rememberFocusedField()
+    }
+
+    @objc private func requestAccessibilityFromMenu() {
+        runtime?.requestAccessibilityTrust()
     }
 
     @objc private func checkForUpdatesFromMenu() {

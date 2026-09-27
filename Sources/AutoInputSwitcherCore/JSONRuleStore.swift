@@ -17,8 +17,16 @@ public protocol CommandRuleStore: Sendable {
     func save(_ rules: [CommandRule]) throws
 }
 
+/// Persistence boundary for the rules of single text fields.
+public protocol FieldRuleStore: Sendable {
+    var url: URL { get }
+    func load() throws -> [FieldRule]
+    func save(_ rules: [FieldRule]) throws
+}
+
 public typealias JSONRuleStore = JSONFileStore<AppRule>
 public typealias JSONCommandRuleStore = JSONFileStore<CommandRule>
+public typealias JSONFieldRuleStore = JSONFileStore<FieldRule>
 
 extension JSONFileStore: RuleStore where Element == AppRule {
     public static func applicationSupportStore(
@@ -38,6 +46,17 @@ extension JSONFileStore: CommandRuleStore where Element == CommandRule {
         JSONCommandRuleStore(
             url: applicationSupportDirectory(appName: appName)
                 .appendingPathComponent("command-rules.json")
+        )
+    }
+}
+
+extension JSONFileStore: FieldRuleStore where Element == FieldRule {
+    public static func applicationSupportStore(
+        appName: String = "AutoInputSwitcher"
+    ) -> JSONFieldRuleStore {
+        JSONFieldRuleStore(
+            url: applicationSupportDirectory(appName: appName)
+                .appendingPathComponent("field-rules.json")
         )
     }
 }
