@@ -7,8 +7,8 @@
 
 set -euo pipefail
 
-APP_NAME="AutoInputSwitcher"
-BUNDLE_IDENTIFIER="com.local.AutoInputSwitcher"
+APP_NAME="MoliSwitch"
+BUNDLE_IDENTIFIER="com.moli.MoliSwitch"
 CONFIGURATION="${CONFIGURATION:-release}"
 VERSION="${VERSION:-0.2.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"

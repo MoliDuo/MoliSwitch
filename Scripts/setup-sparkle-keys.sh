@@ -25,7 +25,7 @@ fail() {
 
 if [ -z "$PRIVATE_KEY_OUTPUT" ]; then
     echo "用法：Scripts/setup-sparkle-keys.sh <私钥导出路径>" >&2
-    echo "请传入一个尚不存在的路径，例如：\$HOME/AutoInputSwitcher-sparkle-private-key.txt" >&2
+    echo "请传入一个尚不存在的路径，例如：\$HOME/MoliSwitch-sparkle-private-key.txt" >&2
     exit 1
 fi
 

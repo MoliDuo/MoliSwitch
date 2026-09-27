@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_NAME: AutoInputSwitcher
+  APP_NAME: MoliSwitch
   # 版本统一由本工作流的编号推导：显示版本 0.2.<run_number>，构建号 <run>.<attempt>。
   VERSION: 0.2.${{ github.run_number }}
   BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
@@ -44,7 +44,7 @@ jobs:
           xcodebuild -version || true
 
       - name: Run core checks
-        run: swift run AutoInputSwitcherCoreChecks
+        run: swift run MoliSwitchCoreChecks
 
       - name: Run unit tests
         run: swift test
@@ -141,10 +141,10 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: AutoInputSwitcher-macOS
+          name: MoliSwitch-macOS
           path: |
-            .build/dist/AutoInputSwitcher-macOS.zip
-            .build/dist/AutoInputSwitcher-macOS.dmg
+            .build/dist/MoliSwitch-macOS.zip
+            .build/dist/MoliSwitch-macOS.dmg
             .build/dist/checksums.txt
             .build/dist/build-manifest.json
           if-no-files-found: error

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 构建 AutoInputSwitcher.app：
+# 构建 MoliSwitch.app：
 #   * 通用二进制（arm64 + x86_64）
 #   * 内嵌 Sparkle.framework（保留符号链接与辅助进程）
 #   * 写入自动更新所需的 Info.plist 键
@@ -17,10 +17,10 @@
 
 set -euo pipefail
 
-APP_NAME="AutoInputSwitcher"
-BUNDLE_IDENTIFIER="com.local.AutoInputSwitcher"
+APP_NAME="MoliSwitch"
+BUNDLE_IDENTIFIER="com.moli.MoliSwitch"
 MINIMUM_SYSTEM_VERSION="14.0"
-DEFAULT_FEED_URL="https://github.com/xiangyumou/AutoInputSwitcher/releases/latest/download/appcast.xml"
+DEFAULT_FEED_URL="https://github.com/xiangyumou/MoliSwitch/releases/latest/download/appcast.xml"
 
 CONFIGURATION="${CONFIGURATION:-release}"
 VERSION="${VERSION:-0.2.0}"

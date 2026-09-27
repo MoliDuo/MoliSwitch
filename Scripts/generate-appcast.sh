@@ -12,16 +12,16 @@
 #   DIST_DIR             产物目录，默认 .build/dist
 #   VERSION              可选，显示版本，用于核对清单
 #   BUILD_NUMBER         可选，构建号，用于核对清单
-#   APP_NAME             应用名，默认 AutoInputSwitcher
-#   GITHUB_REPOSITORY    仓库，默认 xiangyumou/AutoInputSwitcher
+#   APP_NAME             应用名，默认 MoliSwitch
+#   GITHUB_REPOSITORY    仓库，默认 xiangyumou/MoliSwitch
 
 set -euo pipefail
 
-APP_NAME="${APP_NAME:-AutoInputSwitcher}"
+APP_NAME="${APP_NAME:-MoliSwitch}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${DIST_DIR:-$ROOT_DIR/.build/dist}"
 SPARKLE_TOOLS_DIR="${SPARKLE_TOOLS_DIR:-}"
-REPOSITORY="${GITHUB_REPOSITORY:-xiangyumou/AutoInputSwitcher}"
+REPOSITORY="${GITHUB_REPOSITORY:-xiangyumou/MoliSwitch}"
 TAG="${TAG:-}"
 VERSION="${VERSION:-}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"

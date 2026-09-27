@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_NAME: AutoInputSwitcher
+  APP_NAME: MoliSwitch
   SPARKLE_VERSION: 2.10.0
   SPARKLE_TOOLS_SHA256: 17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959
 
@@ -46,7 +46,7 @@ jobs:
       - name: Download artifacts of the exact upstream run
         uses: actions/download-artifact@v4
         with:
-          name: AutoInputSwitcher-macOS
+          name: MoliSwitch-macOS
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
           path: dist
@@ -101,7 +101,7 @@ jobs:
             exit 1
           fi
 
-          for name in AutoInputSwitcher-macOS.zip AutoInputSwitcher-macOS.dmg checksums.txt build-manifest.json; do
+          for name in MoliSwitch-macOS.zip MoliSwitch-macOS.dmg checksums.txt build-manifest.json; do
             if [ ! -s "dist/$name" ]; then
               echo "::error::缺少产物文件 dist/${name}。"
               exit 1
@@ -199,7 +199,7 @@ jobs:
             cat > "$notes" <<NOTES_EOF
           自动构建的 macOS 版本 ${VERSION}（构建号 ${BUILD_NUMBER}），提交 ${HEAD_SHA}。
 
-          - 安装：下载 AutoInputSwitcher-macOS.dmg 并拖入「应用程序」，或解压 ZIP 后运行其中的应用。
+          - 安装：下载 MoliSwitch-macOS.dmg 并拖入「应用程序」，或解压 ZIP 后运行其中的应用。
           - 更新：应用内置 Sparkle 更新器，默认每小时检查一次；也可在菜单栏菜单里选择「检查更新…」。
           - 首次支持自动更新的版本需要手动安装一次；之后才能自动更新。
           - 本版本采用固定的自签名证书签名，未做 Apple 公证：首次打开需在「系统设置 → 隐私与安全性」中允许。
@@ -226,7 +226,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for name in AutoInputSwitcher-macOS.zip AutoInputSwitcher-macOS.dmg appcast.xml checksums.txt; do
+          for name in MoliSwitch-macOS.zip MoliSwitch-macOS.dmg appcast.xml checksums.txt; do
             if [ ! -s "dist/$name" ]; then
               echo "::error::缺少待上传文件 dist/${name}。" >&2
               exit 1
@@ -234,8 +234,8 @@ jobs:
           done
 
           gh release upload "$TAG" --repo "$GH_REPO" --clobber \
-            dist/AutoInputSwitcher-macOS.zip \
-            dist/AutoInputSwitcher-macOS.dmg \
+            dist/MoliSwitch-macOS.zip \
+            dist/MoliSwitch-macOS.dmg \
             dist/appcast.xml \
             dist/checksums.txt
 
@@ -300,7 +300,7 @@ jobs:
           grep -qF "/download/$TAG/" "$appcast" \
             || { echo "::error::公开清单的下载地址未指向 ${TAG}。" >&2; exit 1; }
 
-          for name in AutoInputSwitcher-macOS.zip AutoInputSwitcher-macOS.dmg appcast.xml checksums.txt; do
+          for name in MoliSwitch-macOS.zip MoliSwitch-macOS.dmg appcast.xml checksums.txt; do
             code="$(curl -sL -o /dev/null -w '%{http_code}' --retry 2 "$base/$name")"
             [ "$code" = "200" ] || { echo "::error::附件 $name 下载失败（HTTP ${code}）。" >&2; exit 1; }
           done

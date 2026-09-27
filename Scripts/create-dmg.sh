@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-APP_NAME="AutoInputSwitcher"
+APP_NAME="MoliSwitch"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_PATH="${APP_PATH:-$ROOT_DIR/.build/$APP_NAME.app}"

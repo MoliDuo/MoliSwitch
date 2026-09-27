@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 
 let outputURL = URL(fileURLWithPath: CommandLine.arguments[1])
 let temporaryDirectory = FileManager.default.temporaryDirectory
-    .appendingPathComponent("AutoInputSwitcherIcon-\(UUID().uuidString)", isDirectory: true)
+    .appendingPathComponent("MoliSwitchIcon-\(UUID().uuidString)", isDirectory: true)
 let iconsetURL = temporaryDirectory.appendingPathComponent("AppIcon.iconset", isDirectory: true)
 
 let iconFiles: [(name: String, size: CGFloat)] = [
@@ -50,7 +50,7 @@ try process.run()
 process.waitUntilExit()
 
 if process.terminationStatus != 0 {
-    throw NSError(domain: "AutoInputSwitcherIcon", code: Int(process.terminationStatus))
+    throw NSError(domain: "MoliSwitchIcon", code: Int(process.terminationStatus))
 }
 
 private func drawIcon(size: CGFloat, to url: URL) throws {
@@ -64,7 +64,7 @@ private func drawIcon(size: CGFloat, to url: URL) throws {
         space: CGColorSpaceCreateDeviceRGB(),
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ) else {
-        throw NSError(domain: "AutoInputSwitcherIcon", code: 1)
+        throw NSError(domain: "MoliSwitchIcon", code: 1)
     }
 
     context.clear(CGRect(x: 0, y: 0, width: size, height: size))
@@ -154,11 +154,11 @@ private func drawIcon(size: CGFloat, to url: URL) throws {
             1,
             nil
           ) else {
-        throw NSError(domain: "AutoInputSwitcherIcon", code: 2)
+        throw NSError(domain: "MoliSwitchIcon", code: 2)
     }
 
     CGImageDestinationAddImage(destination, image, nil)
     if !CGImageDestinationFinalize(destination) {
-        throw NSError(domain: "AutoInputSwitcherIcon", code: 3)
+        throw NSError(domain: "MoliSwitchIcon", code: 3)
     }
 }

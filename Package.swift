@@ -3,28 +3,28 @@
 import PackageDescription
 
 let package = Package(
-    name: "AutoInputSwitcher",
+    name: "MoliSwitch",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         .library(
-            name: "AutoInputSwitcherCore",
-            targets: ["AutoInputSwitcherCore"]
+            name: "MoliSwitchCore",
+            targets: ["MoliSwitchCore"]
         ),
         // App code lives in a library so the test target can exercise it without
         // competing with the executable main entry point.
         .library(
-            name: "AutoInputSwitcherApp",
-            targets: ["AutoInputSwitcherApp"]
+            name: "MoliSwitchApp",
+            targets: ["MoliSwitchApp"]
         ),
         .executable(
-            name: "AutoInputSwitcher",
-            targets: ["AutoInputSwitcher"]
+            name: "MoliSwitch",
+            targets: ["MoliSwitch"]
         ),
         .executable(
-            name: "AutoInputSwitcherCoreChecks",
-            targets: ["AutoInputSwitcherCoreChecks"]
+            name: "MoliSwitchCoreChecks",
+            targets: ["MoliSwitchCoreChecks"]
         )
     ],
     dependencies: [
@@ -34,12 +34,12 @@ let package = Package(
     targets: [
         // Core stays free of AppKit and Sparkle so it can be tested anywhere.
         .target(
-            name: "AutoInputSwitcherCore"
+            name: "MoliSwitchCore"
         ),
         .target(
-            name: "AutoInputSwitcherApp",
+            name: "MoliSwitchApp",
             dependencies: [
-                "AutoInputSwitcherCore",
+                "MoliSwitchCore",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             linkerSettings: [
@@ -50,20 +50,20 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "AutoInputSwitcher",
-            dependencies: ["AutoInputSwitcherApp"]
+            name: "MoliSwitch",
+            dependencies: ["MoliSwitchApp"]
         ),
         .executableTarget(
-            name: "AutoInputSwitcherCoreChecks",
-            dependencies: ["AutoInputSwitcherCore"]
+            name: "MoliSwitchCoreChecks",
+            dependencies: ["MoliSwitchCore"]
         ),
         .testTarget(
-            name: "AutoInputSwitcherCoreTests",
-            dependencies: ["AutoInputSwitcherCore"]
+            name: "MoliSwitchCoreTests",
+            dependencies: ["MoliSwitchCore"]
         ),
         .testTarget(
-            name: "AutoInputSwitcherTests",
-            dependencies: ["AutoInputSwitcherApp"]
+            name: "MoliSwitchTests",
+            dependencies: ["MoliSwitchApp"]
         )
     ]
 )

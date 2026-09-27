@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# AutoInputSwitcher 完整校验：核心检查、单元测试、打包、产物校验。
+# MoliSwitch 完整校验：核心检查、单元测试、打包、产物校验。
 # 任何一步失败都以非零状态退出，CI 用同一个脚本作为发布前的阻断检查。
 
 set -euo pipefail
@@ -12,7 +12,7 @@ PACKAGE_LOG="$ROOT_DIR/.build/test-package.log"
 mkdir -p "$ROOT_DIR/.build"
 
 echo "== 核心检查 =="
-swift run AutoInputSwitcherCoreChecks
+swift run MoliSwitchCoreChecks
 
 echo "== 单元测试 =="
 swift test
