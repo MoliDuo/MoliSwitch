@@ -94,6 +94,10 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
     fileprivate func handle(_ type: CGEventType, _ event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            // Keys pressed while the tap was off were not seen.
+            Diagnostics.slash.error(
+                "key tap disabled (\(type == .tapDisabledByTimeout ? "timeout" : "user input", privacy: .public)), re-enabling"
+            )
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
@@ -133,34 +137,40 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
         static let delete: Int64 = 51
         static let escape: Int64 = 53
         static let keypadEnter: Int64 = 76
+        static let forwardDelete: Int64 = 117
     }
 
+    /// What ⌃U and ⌃C type, which clears the input in shells and coding agents.
+    private static let clearLineCharacters: Set<String> = ["\u{15}", "\u{03}"]
+
     private static func key(for event: CGEvent) -> SlashCommandKey {
-        if !event.flags.isDisjoint(with: [.maskCommand, .maskControl, .maskAlternate]) {
-            return .other
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+
+        if !flags.isDisjoint(with: [.maskCommand, .maskControl, .maskAlternate]) {
+            switch keyCode {
+            case KeyCode.delete where !flags.isDisjoint(with: [.maskCommand, .maskAlternate]),
+                 KeyCode.forwardDelete:
+                return .deleteMore
+            default:
+                let onlyControl = flags.intersection([.maskCommand, .maskControl, .maskAlternate]) == .maskControl
+                return onlyControl && clearLineCharacters.contains(characters(of: event)) ? .clearLine : .other
+            }
         }
 
-        switch event.getIntegerValueField(.keyboardEventKeycode) {
+        switch keyCode {
         case KeyCode.returnKey, KeyCode.keypadEnter: return .returnKey
         case KeyCode.escape: return .escape
         case KeyCode.tab: return .tab
         case KeyCode.delete: return .backspace
+        case KeyCode.forwardDelete: return .deleteMore
         case KeyCode.space: return .space
         default: break
         }
 
-        // The character of the keyboard layout underneath the input method,
-        // which is "/" for the slash key even while it would type "、".
-        var length = 0
-        var characters = [UniChar](repeating: 0, count: 4)
-        event.keyboardGetUnicodeString(
-            maxStringLength: characters.count,
-            actualStringLength: &length,
-            unicodeString: &characters
-        )
-        guard length > 0 else { return .other }
+        let text = characters(of: event)
+        guard !text.isEmpty else { return .other }
 
-        let text = String(utf16CodeUnits: characters, count: min(length, characters.count))
         if text == "/" {
             return .slash
         }
@@ -172,6 +182,19 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
             return .other
         }
         return .printable
+    }
+
+    /// The characters of the keyboard layout underneath the input method,
+    /// which is "/" for the slash key even while it would type "、".
+    private static func characters(of event: CGEvent) -> String {
+        var length = 0
+        var characters = [UniChar](repeating: 0, count: 4)
+        event.keyboardGetUnicodeString(
+            maxStringLength: characters.count,
+            actualStringLength: &length,
+            unicodeString: &characters
+        )
+        return String(utf16CodeUnits: characters, count: min(length, characters.count))
     }
 }
 

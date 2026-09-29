@@ -19,6 +19,9 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
 
     private var cachedInputSources: [InputSource]?
     private var cacheDate: Date?
+    /// Input sources looked up by identifier, so switching does not list them
+    /// every time. Emptied whenever the enabled input sources change.
+    private var sourcesByID: [String: TISInputSource] = [:]
     private var changeHandler: (@MainActor () -> Void)?
     private var selectionHandler: (@MainActor () -> Void)?
     private var selectionObserver: NSObjectProtocol?
@@ -41,6 +44,7 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
     func invalidateCache() {
         cachedInputSources = nil
         cacheDate = nil
+        sourcesByID = [:]
     }
 
     func startMonitoringEnabledSources(_ handler: @escaping @MainActor () -> Void) {
@@ -121,6 +125,8 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
         }
 
         guard TISSelectInputSource(source) == noErr else {
+            // The cached source may be stale.
+            sourcesByID[id] = nil
             return false
         }
 
@@ -154,11 +160,17 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
     }
 
     private func inputSource(matching id: String) -> TISInputSource? {
+        if let cached = sourcesByID[id] {
+            return cached
+        }
+
         let filters: [String: Any] = [
             kTISPropertyInputSourceID as String: id
         ]
         let list = TISCreateInputSourceList(filters as CFDictionary, false).takeRetainedValue()
-        return (list as NSArray).map { $0 as! TISInputSource }.first
+        let source = (list as NSArray).map { $0 as! TISInputSource }.first
+        sourcesByID[id] = source
+        return source
     }
 
     private func stringProperty(_ source: TISInputSource, _ key: CFString) -> String? {

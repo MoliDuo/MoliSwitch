@@ -257,6 +257,32 @@ final class AppRuntimeSlashCommandTests: XCTestCase {
     }
 
     @MainActor
+    func testTerminalSwitchesAfterTheLineWasDeleted() async {
+        let fixture = makeClaudeFixture(apps: [terminal])
+        fixture.fields.caretAtStart = false
+        fixture.runtime.applyRuleIfNeeded(for: terminal)
+
+        fixture.keys.press([.printable, .printable, .backspace, .backspace])
+        await startCommand(fixture)
+
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
+        XCTAssertEqual(fixture.keys.typedKeys.last, .slash)
+    }
+
+    @MainActor
+    func testTabSwitchesBackWhenSpaceDoes() async {
+        let fixture = makeClaudeFixture()
+        fixture.runtime.slashCommandRestoresOnSpace = true
+        fixture.runtime.applyRuleIfNeeded(for: claude)
+        await startCommand(fixture)
+
+        fixture.keys.press([.printable, .tab])
+
+        await waitUntil { fixture.inputSources.current == TestInputSources.shuangpin }
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
+    }
+
+    @MainActor
     func testAddingAnApplicationIsSaved() {
         let fixture = makeFixture()
 

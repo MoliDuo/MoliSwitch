@@ -89,6 +89,77 @@ final class SlashCommandTrackerTests: XCTestCase {
         XCTAssertEqual(press(&tracker, .returnKey, current: english), .restore(inputSourceID: chinese))
     }
 
+    func testTabEndsTheCommandWhenSpaceDoes() {
+        var tracker = startedTracker(restoresOnSpace: true)
+        XCTAssertEqual(press(&tracker, .printable, current: english), .pass)
+        XCTAssertEqual(press(&tracker, .tab, current: english), .restore(inputSourceID: chinese))
+        XCTAssertFalse(tracker.isInCommand)
+        // The completed command is text now, so a slash after it is not a command.
+        XCTAssertEqual(press(&tracker, .slash), .pass)
+    }
+
+    func testSlashAfterDeletingStartsACommand() {
+        var tracker = SlashCommandTracker()
+        _ = press(&tracker, .printable)
+        _ = press(&tracker, .printable)
+        _ = press(&tracker, .backspace)
+        XCTAssertEqual(press(&tracker, .slash), .switchToEnglish(englishID: english))
+
+        var words = SlashCommandTracker()
+        _ = press(&words, .printable)
+        _ = press(&words, .deleteMore)
+        XCTAssertEqual(press(&words, .slash), .switchToEnglish(englishID: english))
+    }
+
+    func testTypingAfterDeletingIsNotTheStart() {
+        var tracker = SlashCommandTracker()
+        _ = press(&tracker, .printable)
+        _ = press(&tracker, .backspace)
+        _ = press(&tracker, .printable)
+        XCTAssertEqual(press(&tracker, .slash), .pass)
+    }
+
+    func testCaretPositionWinsOverDeleting() {
+        var tracker = SlashCommandTracker()
+        _ = press(&tracker, .printable)
+        _ = press(&tracker, .backspace)
+        XCTAssertEqual(press(&tracker, .slash, caretAtStart: false), .pass)
+    }
+
+    func testSlashTypedAgainAfterAWrongGuessIsLeftAlone() {
+        var tracker = SlashCommandTracker()
+        _ = press(&tracker, .printable)
+        _ = press(&tracker, .backspace)
+        XCTAssertEqual(press(&tracker, .slash), .switchToEnglish(englishID: english))
+        XCTAssertEqual(press(&tracker, .backspace, current: english), .restore(inputSourceID: chinese))
+        XCTAssertEqual(press(&tracker, .slash), .pass)
+    }
+
+    func testSlashTypedAgainAtTheStartStartsACommandAgain() {
+        var tracker = startedTracker()
+        XCTAssertEqual(press(&tracker, .backspace, current: english), .restore(inputSourceID: chinese))
+        XCTAssertEqual(press(&tracker, .slash), .switchToEnglish(englishID: english))
+    }
+
+    func testClearingTheLine() {
+        var tracker = SlashCommandTracker()
+        _ = press(&tracker, .printable)
+        _ = press(&tracker, .clearLine)
+        XCTAssertEqual(press(&tracker, .slash), .switchToEnglish(englishID: english))
+        XCTAssertEqual(press(&tracker, .printable, current: english), .pass)
+        XCTAssertEqual(press(&tracker, .clearLine, current: english), .restore(inputSourceID: chinese))
+        XCTAssertFalse(tracker.isInCommand)
+        XCTAssertEqual(press(&tracker, .slash), .switchToEnglish(englishID: english))
+    }
+
+    func testDeletingWordsInACommandStopsCounting() {
+        var tracker = startedTracker()
+        _ = press(&tracker, .printable, current: english)
+        XCTAssertEqual(press(&tracker, .deleteMore, current: english), .pass)
+        XCTAssertEqual(press(&tracker, .backspace, current: english), .pass)
+        XCTAssertTrue(tracker.isInCommand)
+    }
+
     func testSpaceEndsTheCommandOnlyWhenTurnedOn() {
         var tracker = startedTracker()
         XCTAssertEqual(press(&tracker, .space, current: english), .pass)

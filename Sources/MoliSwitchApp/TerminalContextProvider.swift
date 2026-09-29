@@ -110,7 +110,11 @@ final class SystemTerminalContextProvider: TerminalContextProviding {
         guard let script = compiledScript(for: bundleIdentifier) else { return nil }
 
         var error: NSDictionary?
+        let start = ContinuousClock.now
         let result = script.executeAndReturnError(&error)
+        // Runs on the main thread, where it holds up every key press.
+        let elapsed = Diagnostics.milliseconds(since: start)
+        Diagnostics.terminal.debug("active tab asked in \(elapsed, privacy: .public) ms")
         guard error == nil, let tty = result.stringValue, tty.hasPrefix("/dev/") else {
             return nil
         }

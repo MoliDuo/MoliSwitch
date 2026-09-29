@@ -976,14 +976,26 @@ final class AppRuntime: ObservableObject {
     func handleKeyEvent(_ key: SlashCommandKey) -> Bool {
         guard let app = currentApplication, watchesSlashCommands(in: app) else { return false }
 
+        let pressed = ContinuousClock.now
+        let currentID = inputSourceManager.currentInputSource()?.id
         let decision = slashCommandTracker.handle(
             key,
-            currentID: inputSourceManager.currentInputSource()?.id,
+            currentID: currentID,
             englishID: effectiveEnglishInputSource?.id,
             caretAtStart: {
                 guard SlashCommandApp.reportsCaretPosition(bundleIdentifier: app.bundleIdentifier) else { return nil }
-                return focusedFieldProvider.isCaretAtStart()
+                let start = ContinuousClock.now
+                let atStart = focusedFieldProvider.isCaretAtStart()
+                let elapsed = Diagnostics.milliseconds(since: start)
+                Diagnostics.slash.debug(
+                    "caret at start: \(String(describing: atStart), privacy: .public), \(elapsed, privacy: .public) ms"
+                )
+                return atStart
             }
+        )
+        let state = slashCommandTracker.stateDescription
+        Diagnostics.slash.debug(
+            "key \(String(describing: key), privacy: .public) in \(app.bundleIdentifier, privacy: .public) with \(currentID ?? "nil", privacy: .public): \(String(describing: decision), privacy: .public), now \(state, privacy: .public)"
         )
 
         switch decision {
@@ -1000,16 +1012,25 @@ final class AppRuntime: ObservableObject {
             Task { [weak self] in
                 try? await Task.sleep(for: delay)
                 self?.keyEventMonitor.releaseHeldKeys()
+                let elapsed = Diagnostics.milliseconds(since: pressed)
+                Diagnostics.slash.debug("slash released \(elapsed, privacy: .public) ms after it was pressed")
             }
             return true
         case .restore(let previousID):
             // Return and Escape reach the application first, still typed with
             // the English input source.
-            let englishID = inputSourceManager.currentInputSource()?.id
+            let englishID = currentID
             let delay = slashCommandRestoreDelay
             Task { [weak self] in
                 try? await Task.sleep(for: delay)
-                guard let self, self.inputSourceManager.currentInputSource()?.id == englishID else { return }
+                guard let self else { return }
+                let selectedID = self.inputSourceManager.currentInputSource()?.id
+                guard selectedID == englishID else {
+                    Diagnostics.slash.info(
+                        "restore skipped, \(selectedID ?? "nil", privacy: .public) was selected meanwhile"
+                    )
+                    return
+                }
                 self.selectSlashCommandInputSource(previousID)
             }
             return false
@@ -1018,7 +1039,11 @@ final class AppRuntime: ObservableObject {
 
     /// Ends a command when focus moved to another field or application.
     private func endSlashCommandForFocusChange() {
+        let wasInCommand = slashCommandTracker.isInCommand
         let decision = slashCommandTracker.focusChanged(currentID: inputSourceManager.currentInputSource()?.id)
+        if wasInCommand {
+            Diagnostics.slash.info("focus changed during a command: \(String(describing: decision), privacy: .public)")
+        }
         if case .restore(let previousID) = decision {
             selectSlashCommandInputSource(previousID)
         }
@@ -1026,10 +1051,16 @@ final class AppRuntime: ObservableObject {
 
     @discardableResult
     private func selectSlashCommandInputSource(_ id: String) -> Bool {
-        guard inputSourceManager.selectInputSource(id: id) else { return false }
+        let start = ContinuousClock.now
+        let selected = inputSourceManager.selectInputSource(id: id)
+        let elapsed = Diagnostics.milliseconds(since: start)
+        Diagnostics.slash.info(
+            "select \(id, privacy: .public): \(selected ? "ok" : "failed", privacy: .public), \(elapsed, privacy: .public) ms"
+        )
+        guard selected else { return false }
         switchCounter.recordSwitch()
         switchCount = switchCounter.count
-        currentInputSource = inputSourceManager.currentInputSource()
+        currentInputSource = inputSources.first { $0.id == id } ?? inputSourceManager.currentInputSource()
         return true
     }
 

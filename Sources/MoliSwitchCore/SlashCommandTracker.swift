@@ -7,6 +7,10 @@ public enum SlashCommandKey: Equatable, Sendable {
     case printable
     case space
     case backspace
+    /// Deletes more than one character, like ⌥⌫ or ⌘⌫, or deletes forward.
+    case deleteMore
+    /// Clears the whole input, like ⌃U or ⌃C.
+    case clearLine
     case tab
     case returnKey
     case escape
@@ -20,14 +24,18 @@ public enum SlashCommandKey: Equatable, Sendable {
 ///
 /// A slash starts a command at the start of the input. Whether the caret is
 /// there comes from Accessibility when the application tells; otherwise the
-/// start of the input is assumed right after focus moved or Return or Escape
-/// was pressed, until a character is typed.
+/// start of the input is assumed right after focus moved or Return, Escape or
+/// a key clearing the input was pressed, until a character is typed. Right
+/// after deleting, the input may be empty again: an input method types several
+/// keys into one character, so the keys cannot be counted, and a slash then
+/// starts a command too. When that guess was wrong, deleting the slash and
+/// typing it again types it with the input source in use.
 ///
 /// The command ends with Return, Escape, focus moving elsewhere, deleting
-/// everything typed since the slash, or a space when restoresOnSpace is set.
-/// Tab completes a command and does not end it. The input source is only
-/// switched back while the English one is still selected, so a switch the user
-/// made in between is kept.
+/// everything typed since the slash, or, when restoresOnSpace is set, a space
+/// or Tab. Otherwise Tab completes a command and does not end it. The input
+/// source is only switched back while the English one is still selected, so a
+/// switch the user made in between is kept.
 public struct SlashCommandTracker: Equatable, Sendable {
     public enum Decision: Equatable, Sendable {
         case pass
@@ -37,15 +45,25 @@ public struct SlashCommandTracker: Equatable, Sendable {
         case restore(inputSourceID: String)
     }
 
-    private enum State: Equatable, Sendable {
-        case idle(atInputStart: Bool)
-        /// typedCount counts the characters typed since the slash, including
-        /// it, while every key since is known to have typed one or deleted one.
-        case command(previousID: String, englishID: String, typedCount: Int?)
+    /// Whether the caret is at the start of the input, as far as the keys tell.
+    public enum InputStart: Equatable, Sendable {
+        case yes
+        case no
+        /// Something was deleted since a character was typed.
+        case afterDeleting
     }
 
+    private enum State: Equatable, Sendable {
+        case idle(start: InputStart)
+        /// typedCount counts the characters typed since the slash, including
+        /// it, while every key since is known to have typed one or deleted one.
+        /// guessed is set when the command started right after deleting.
+        case command(previousID: String, englishID: String, typedCount: Int?, guessed: Bool)
+    }
+
+    /// Whether a space or Tab ends a command, like Return does.
     public var restoresOnSpace: Bool
-    private var state: State = .idle(atInputStart: true)
+    private var state: State = .idle(start: .yes)
 
     public init(restoresOnSpace: Bool = false) {
         self.restoresOnSpace = restoresOnSpace
@@ -54,6 +72,16 @@ public struct SlashCommandTracker: Equatable, Sendable {
     public var isInCommand: Bool {
         if case .command = state { return true }
         return false
+    }
+
+    /// A short description of the state for diagnostics, without any text.
+    public var stateDescription: String {
+        switch state {
+        case .idle(let start):
+            return "idle(\(start))"
+        case .command(_, _, let typedCount, let guessed):
+            return "command(typed: \(typedCount.map(String.init) ?? "?"), guessed: \(guessed))"
+        }
     }
 
     /// Input sources that are keyboard layouts type a slash themselves.
@@ -73,36 +101,42 @@ public struct SlashCommandTracker: Equatable, Sendable {
         caretAtStart: () -> Bool?
     ) -> Decision {
         switch state {
-        case .idle(let atInputStart):
+        case .idle(let start):
             return handleOutsideCommand(
                 key,
-                atInputStart: atInputStart,
+                start: start,
                 currentID: currentID,
                 englishID: englishID,
                 caretAtStart: caretAtStart
             )
-        case .command(let previousID, let commandEnglishID, let typedCount):
+        case .command(let previousID, let commandEnglishID, let typedCount, let guessed):
             guard currentID == commandEnglishID else {
                 // The user switched by hand; the command is theirs now.
-                state = .idle(atInputStart: false)
+                state = .idle(start: .no)
                 return handleOutsideCommand(
                     key,
-                    atInputStart: false,
+                    start: .no,
                     currentID: currentID,
                     englishID: englishID,
                     caretAtStart: caretAtStart
                 )
             }
-            return handleInCommand(key, previousID: previousID, englishID: commandEnglishID, typedCount: typedCount)
+            return handleInCommand(
+                key,
+                previousID: previousID,
+                englishID: commandEnglishID,
+                typedCount: typedCount,
+                guessed: guessed
+            )
         }
     }
 
     /// Focus moved to another field, window or application.
     public mutating func focusChanged(currentID: String?) -> Decision {
         let previous = state
-        state = .idle(atInputStart: true)
+        state = .idle(start: .yes)
 
-        if case .command(let previousID, let englishID, _) = previous, currentID == englishID {
+        if case .command(let previousID, let englishID, _, _) = previous, currentID == englishID {
             return .restore(inputSourceID: previousID)
         }
         return .pass
@@ -110,36 +144,45 @@ public struct SlashCommandTracker: Equatable, Sendable {
 
     /// The switch to English did not happen, so there is no command to end.
     public mutating func cancelCommand() {
-        state = .idle(atInputStart: false)
+        state = .idle(start: .no)
     }
 
     private mutating func handleOutsideCommand(
         _ key: SlashCommandKey,
-        atInputStart: Bool,
+        start: InputStart,
         currentID: String?,
         englishID: String?,
         caretAtStart: () -> Bool?
     ) -> Decision {
         switch key {
         case .slash:
-            state = .idle(atInputStart: false)
+            state = .idle(start: .no)
             guard
                 let currentID,
                 let englishID,
                 currentID != englishID,
-                !Self.isKeyboardLayout(currentID),
-                caretAtStart() ?? atInputStart
+                !Self.isKeyboardLayout(currentID)
             else {
                 return .pass
             }
-            state = .command(previousID: currentID, englishID: englishID, typedCount: 1)
+            let guessed: Bool
+            if let known = caretAtStart() {
+                guard known else { return .pass }
+                guessed = false
+            } else {
+                guard start != .no else { return .pass }
+                guessed = start == .afterDeleting
+            }
+            state = .command(previousID: currentID, englishID: englishID, typedCount: 1, guessed: guessed)
             return .switchToEnglish(englishID: englishID)
-        case .returnKey, .escape:
-            state = .idle(atInputStart: true)
+        case .returnKey, .escape, .clearLine:
+            state = .idle(start: .yes)
         case .printable, .space, .tab, .other:
-            state = .idle(atInputStart: false)
-        case .backspace:
-            break
+            state = .idle(start: .no)
+        case .backspace, .deleteMore:
+            if start == .no {
+                state = .idle(start: .afterDeleting)
+            }
         }
         return .pass
     }
@@ -148,31 +191,36 @@ public struct SlashCommandTracker: Equatable, Sendable {
         _ key: SlashCommandKey,
         previousID: String,
         englishID: String,
-        typedCount: Int?
+        typedCount: Int?,
+        guessed: Bool
     ) -> Decision {
         let end = Decision.restore(inputSourceID: previousID)
+        func stay(typedCount: Int?) {
+            state = .command(previousID: previousID, englishID: englishID, typedCount: typedCount, guessed: guessed)
+        }
 
         switch key {
-        case .returnKey, .escape:
-            state = .idle(atInputStart: true)
+        case .returnKey, .escape, .clearLine:
+            state = .idle(start: .yes)
             return end
-        case .space where restoresOnSpace:
-            state = .idle(atInputStart: false)
+        case .space where restoresOnSpace, .tab where restoresOnSpace:
+            state = .idle(start: .no)
             return end
         case .slash, .printable, .space:
-            state = .command(previousID: previousID, englishID: englishID, typedCount: typedCount.map { $0 + 1 })
+            stay(typedCount: typedCount.map { $0 + 1 })
         case .backspace:
             guard let typedCount else { return .pass }
             if typedCount <= 1 {
-                // The slash itself was deleted.
-                state = .idle(atInputStart: true)
+                // The slash itself was deleted. After a wrong guess, the slash
+                // typed next is meant for the text.
+                state = .idle(start: guessed ? .no : .yes)
                 return end
             }
-            state = .command(previousID: previousID, englishID: englishID, typedCount: typedCount - 1)
-        case .tab, .other:
-            // Completion, arrows and shortcuts change the text in ways that
-            // cannot be counted.
-            state = .command(previousID: previousID, englishID: englishID, typedCount: nil)
+            stay(typedCount: typedCount - 1)
+        case .tab, .deleteMore, .other:
+            // Completion, arrows, shortcuts and deleting words change the text
+            // in ways that cannot be counted.
+            stay(typedCount: nil)
         }
         return .pass
     }

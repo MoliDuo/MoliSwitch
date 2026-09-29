@@ -33,13 +33,14 @@ struct SlashCommandsPage: View {
 
             Section {
                 Toggle("输入斜杠命令时切到英文", isOn: $runtime.slashCommandSwitchingEnabled)
-                Toggle("按空格后切回原输入法", isOn: $runtime.slashCommandRestoresOnSpace)
+                Toggle("按空格或 Tab 后切回原输入法", isOn: $runtime.slashCommandRestoresOnSpace)
                     .disabled(!runtime.slashCommandSwitchingEnabled)
             } footer: {
                 SectionFooter(
                     "在下面的 App 里，在输入框开头输入 / 时，会切到英文输入法并打出 /。"
-                        + "按回车或 Esc、离开输入框，或者把 / 删掉后，切回原来的输入法；按 Tab 补全不会切回。"
-                        + "命令参数要打中文的，可以打开“按空格后切回原输入法”。"
+                        + "终端里看不到光标位置，把输入删空后再按 / 也会切英文。"
+                        + "按回车或 Esc、离开输入框，或者把 / 删掉后，切回原来的输入法。"
+                        + "命令参数要打中文的，可以打开“按空格或 Tab 后切回原输入法”。"
                 )
             }
 
