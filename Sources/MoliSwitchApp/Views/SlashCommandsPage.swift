@@ -31,6 +31,18 @@ struct SlashCommandsPage: View {
                 }
             }
 
+            if runtime.slashCommandSwitchingEnabled && runtime.inputSourceIndicatorEnabled {
+                Section {
+                    NoticeRow(text: "系统会在切换输入法后在光标旁提示，这会让按 / 时卡一下。") {
+                        Button("关闭提示") {
+                            runtime.setInputSourceIndicatorEnabled(false)
+                        }
+                    }
+                } footer: {
+                    SectionFooter("可以在“通用”里重新打开。如果某个 App 里还没变化，重新打开这个 App 就行。")
+                }
+            }
+
             Section {
                 Toggle("输入斜杠命令时切到英文", isOn: $runtime.slashCommandSwitchingEnabled)
                 Toggle("按空格或 Tab 后切回原输入法", isOn: $runtime.slashCommandRestoresOnSpace)
@@ -94,11 +106,13 @@ struct SlashCommandsPage: View {
         .formStyle(.grouped)
         .onAppear {
             runtime.refreshAccessibilityTrust()
+            runtime.refreshInputSourceIndicator()
             refreshRunningApplications()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // The user may come back from System Settings having allowed it.
             runtime.refreshAccessibilityTrust()
+            runtime.refreshInputSourceIndicator()
             refreshRunningApplications()
         }
     }

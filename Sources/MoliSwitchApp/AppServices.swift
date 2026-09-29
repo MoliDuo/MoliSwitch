@@ -16,6 +16,14 @@ protocol InputSourceManaging: AnyObject {
     func stopMonitoringSelectedSource()
 }
 
+/// The system bubble that shows the input source next to the caret after it
+/// changes. It is a setting for every application, not only MoliSwitch.
+@MainActor
+protocol InputSourceIndicatorControlling: AnyObject {
+    var isEnabled: Bool { get }
+    func setEnabled(_ enabled: Bool)
+}
+
 @MainActor
 protocol LoginItemManaging: AnyObject {
     var status: LaunchAtLoginStatus { get }

@@ -210,6 +210,17 @@ final class FakeApplicationScanner: ApplicationScanning, @unchecked Sendable {
 // MARK: - Login items
 
 @MainActor
+final class FakeInputSourceIndicator: InputSourceIndicatorControlling {
+    var isEnabled = true
+    private(set) var changes: [Bool] = []
+
+    func setEnabled(_ enabled: Bool) {
+        changes.append(enabled)
+        isEnabled = enabled
+    }
+}
+
+@MainActor
 final class FakeLoginItemManager: LoginItemManaging {
     var status: LaunchAtLoginStatus = .notRegistered
     var registerError: Error?

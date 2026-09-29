@@ -35,6 +35,7 @@ struct RuntimeFixture {
     let inputSources: FakeInputSourceManager
     let scanner: FakeApplicationScanner
     let loginItems: FakeLoginItemManager
+    let indicator: FakeInputSourceIndicator
     let defaults: UserDefaults
     let suiteName: String
 }
@@ -72,6 +73,7 @@ func makeFixture(
         delay: scanDelay
     )
     let loginItems = FakeLoginItemManager()
+    let indicator = FakeInputSourceIndicator()
 
     let runtime = AppRuntime(
         store: store,
@@ -87,6 +89,7 @@ func makeFixture(
         inputSourceManager: inputSources,
         applicationScanner: scanner,
         loginItemManager: loginItems,
+        inputSourceIndicator: indicator,
         switchCounter: SwitchCounter(defaults: defaults),
         defaults: defaults,
         updateController: nil,
@@ -111,6 +114,7 @@ func makeFixture(
         inputSources: inputSources,
         scanner: scanner,
         loginItems: loginItems,
+        indicator: indicator,
         defaults: defaults,
         suiteName: suiteName
     )

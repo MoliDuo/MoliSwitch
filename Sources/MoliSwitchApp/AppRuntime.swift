@@ -51,6 +51,8 @@ final class AppRuntime: ObservableObject {
     @Published private(set) var terminalAccessDenied = false
     @Published private(set) var switchCount = 0
     @Published private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .notRegistered
+    /// Whether the system shows the input source next to the caret after a switch.
+    @Published private(set) var inputSourceIndicatorEnabled = true
     @Published private(set) var isScanning = false
     @Published private(set) var ruleEditingEnabled = true
     @Published private(set) var iconCacheGeneration = 0
@@ -154,6 +156,7 @@ final class AppRuntime: ObservableObject {
     private let inputSourceManager: any InputSourceManaging
     private let applicationScanner: any ApplicationScanning
     private let loginItemManager: any LoginItemManaging
+    private let inputSourceIndicator: any InputSourceIndicatorControlling
     private let switchCounter: SwitchCounter
     private let defaults: UserDefaults
     private let ownBundleIdentifier: String?
@@ -196,6 +199,7 @@ final class AppRuntime: ObservableObject {
         inputSourceManager: any InputSourceManaging = SystemInputSourceManager(),
         applicationScanner: any ApplicationScanning = InstalledApplicationScanner(),
         loginItemManager: any LoginItemManaging = SystemLoginItemManager(),
+        inputSourceIndicator: any InputSourceIndicatorControlling = SystemInputSourceIndicator(),
         switchCounter: SwitchCounter = SwitchCounter(),
         defaults: UserDefaults = .standard,
         updateController: UpdateController? = nil,
@@ -214,6 +218,7 @@ final class AppRuntime: ObservableObject {
         self.inputSourceManager = inputSourceManager
         self.applicationScanner = applicationScanner
         self.loginItemManager = loginItemManager
+        self.inputSourceIndicator = inputSourceIndicator
         self.switchCounter = switchCounter
         self.defaults = defaults
         self.updateController = updateController
@@ -237,6 +242,7 @@ final class AppRuntime: ObservableObject {
         self.accessibilityTrusted = focusedFieldProvider.isTrusted
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
+        self.inputSourceIndicatorEnabled = inputSourceIndicator.isEnabled
     }
 
     // MARK: - Lifecycle
@@ -1214,6 +1220,20 @@ final class AppRuntime: ObservableObject {
 
     var isLaunchAtLoginEnabled: Bool {
         launchAtLoginStatus.isEnabled
+    }
+
+    /// Turns the system's input source bubble next to the caret on or off.
+    func setInputSourceIndicatorEnabled(_ enabled: Bool) {
+        inputSourceIndicator.setEnabled(enabled)
+        refreshInputSourceIndicator()
+    }
+
+    /// Reads the setting again, since it can be changed outside MoliSwitch.
+    func refreshInputSourceIndicator() {
+        let enabled = inputSourceIndicator.isEnabled
+        if inputSourceIndicatorEnabled != enabled {
+            inputSourceIndicatorEnabled = enabled
+        }
     }
 
     func setLaunchAtLoginEnabled(_ enabled: Bool) {

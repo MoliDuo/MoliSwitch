@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct GeneralPage: View {
@@ -53,6 +54,22 @@ struct GeneralPage: View {
                 )
             }
 
+            Section {
+                Toggle(
+                    "切换后在光标旁显示输入法",
+                    isOn: Binding(
+                        get: { runtime.inputSourceIndicatorEnabled },
+                        set: { runtime.setInputSourceIndicatorEnabled($0) }
+                    )
+                )
+            } footer: {
+                SectionFooter(
+                    "这是系统设置，对所有 App 生效。打开时，每次切换输入法，系统都会在光标旁提示一下，"
+                        + "切换时会卡一下，按 / 切英文时最明显。建议关闭，菜单栏仍会显示当前输入法。"
+                        + "改完后，如果某个 App 里还没变化，重新打开这个 App 就行。"
+                )
+            }
+
             Section("关于") {
                 LabeledContent("版本", value: AppInfo.version)
                 LabeledContent("已自动切换", value: "\(runtime.switchCount) 次")
@@ -67,6 +84,12 @@ struct GeneralPage: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            runtime.refreshInputSourceIndicator()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            runtime.refreshInputSourceIndicator()
+        }
     }
 
     private func automaticChoice(detected: InputSource?) -> InputSourceChoice {
