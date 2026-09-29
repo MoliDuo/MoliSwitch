@@ -13,6 +13,9 @@ final class AppRuntime: ObservableObject {
     static let addressBarInputSourceIDKey = "addressBarInputSourceID"
     static let slashCommandSwitchingEnabledKey = "slashCommandSwitchingEnabled"
     static let slashCommandRestoresOnSpaceKey = "slashCommandRestoresOnSpace"
+    /// Not shown in the settings: how long a slash waits after the switch, in
+    /// milliseconds, for trying out what an application needs.
+    static let slashCommandSwitchDelayKey = "slashCommandSwitchDelayMilliseconds"
     /// Settings picker value for "detect the input source automatically".
     static let automaticInputSourceID = ""
     /// Picker value of an application without a rule, which switches to the
@@ -185,7 +188,7 @@ final class AppRuntime: ObservableObject {
         fieldStore: any FieldRuleStore = JSONFieldRuleStore.applicationSupportStore(),
         slashCommandAppStore: any SlashCommandAppStore = JSONSlashCommandAppStore.applicationSupportStore(),
         keyEventMonitor: any KeyEventMonitoring = SystemKeyEventMonitor(),
-        slashCommandSwitchDelay: Duration = .milliseconds(40),
+        slashCommandSwitchDelay: Duration = .milliseconds(20),
         slashCommandRestoreDelay: Duration = .milliseconds(80),
         focusedFieldProvider: any FocusedFieldProviding = SystemFocusedFieldProvider(),
         terminalContextProvider: any TerminalContextProviding = SystemTerminalContextProvider(),
@@ -1008,9 +1011,10 @@ final class AppRuntime: ObservableObject {
             }
             // The application needs a moment to leave the input method, or it
             // would still type the slash as 「、」.
-            let delay = slashCommandSwitchDelay
+            let delay = effectiveSlashCommandSwitchDelay
             Task { [weak self] in
-                try? await Task.sleep(for: delay)
+                // Without a tolerance the timer may fire 10 ms late.
+                try? await Task.sleep(for: delay, tolerance: .milliseconds(1))
                 self?.keyEventMonitor.releaseHeldKeys()
                 let elapsed = Diagnostics.milliseconds(since: pressed)
                 Diagnostics.slash.debug("slash released \(elapsed, privacy: .public) ms after it was pressed")
@@ -1035,6 +1039,14 @@ final class AppRuntime: ObservableObject {
             }
             return false
         }
+    }
+
+    private var effectiveSlashCommandSwitchDelay: Duration {
+        guard defaults.object(forKey: Self.slashCommandSwitchDelayKey) != nil else {
+            return slashCommandSwitchDelay
+        }
+        let milliseconds = defaults.integer(forKey: Self.slashCommandSwitchDelayKey)
+        return .milliseconds(min(max(milliseconds, 0), 200))
     }
 
     /// Ends a command when focus moved to another field or application.
