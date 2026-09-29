@@ -1620,8 +1620,10 @@ final class AppRuntime: ObservableObject {
 
     private func terminalContext(for app: RunningApplicationInfo) -> TerminalContextResult? {
         guard followsTerminal(app) else { return nil }
+        return noteTerminalContext(terminalContextProvider.foregroundContext(bundleIdentifier: app.bundleIdentifier))
+    }
 
-        let result = terminalContextProvider.foregroundContext(bundleIdentifier: app.bundleIdentifier)
+    private func noteTerminalContext(_ result: TerminalContextResult) -> TerminalContextResult {
         switch result {
         case .found(let context):
             if terminalAccessDenied { terminalAccessDenied = false }
@@ -1648,7 +1650,7 @@ final class AppRuntime: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(interval))
                 guard !Task.isCancelled, let self else { return }
-                self.pollTerminal()
+                await self.pollTerminal()
             }
         }
     }
@@ -1660,11 +1662,16 @@ final class AppRuntime: ObservableObject {
     }
 
     /// Switches when the program in the active tab, or the tab itself, changed.
-    private func pollTerminal() {
-        guard let app = polledApplication, let result = terminalContext(for: app) else {
+    private func pollTerminal() async {
+        guard let app = polledApplication, followsTerminal(app) else {
             stopTerminalPolling()
             return
         }
+
+        let asked = await terminalContextProvider.foregroundContextInBackground(bundleIdentifier: app.bundleIdentifier)
+        // Another application may have become active in the meantime.
+        guard !Task.isCancelled, polledApplication == app, followsTerminal(app) else { return }
+        let result = noteTerminalContext(asked)
 
         switch result {
         case .found(let found):

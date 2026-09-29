@@ -305,6 +305,10 @@ final class FakeTerminalContextProvider: TerminalContextProviding {
         return result
     }
 
+    func foregroundContextInBackground(bundleIdentifier: String) async -> TerminalContextResult {
+        foregroundContext(bundleIdentifier: bundleIdentifier)
+    }
+
     /// Puts a program in the foreground of a tab.
     func run(_ candidates: [String], tty: String = "/dev/ttys001") {
         result = .found(TerminalContext(tty: tty, candidates: candidates))

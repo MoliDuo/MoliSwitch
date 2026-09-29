@@ -35,6 +35,8 @@ protocol ApplicationScanning: Sendable {
 protocol TerminalContextProviding: AnyObject {
     func supportsTerminal(bundleIdentifier: String) -> Bool
     func foregroundContext(bundleIdentifier: String) -> TerminalContextResult
+    /// The same, asked without holding up the main thread.
+    func foregroundContextInBackground(bundleIdentifier: String) async -> TerminalContextResult
 }
 
 /// Reads the text field that has keyboard focus in the frontmost application,

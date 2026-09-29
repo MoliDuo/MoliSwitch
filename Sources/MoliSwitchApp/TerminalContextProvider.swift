@@ -3,6 +3,7 @@ import MoliSwitchCore
 import Carbon
 import Darwin
 import Foundation
+import OSAKit
 
 /// The program running in the foreground of the active terminal tab.
 struct TerminalContext: Equatable, Sendable {
@@ -28,21 +29,56 @@ enum TerminalContextResult: Equatable, Sendable {
 /// except tmux.
 @MainActor
 final class SystemTerminalContextProvider: TerminalContextProviding {
+    private let inspector = TerminalTabInspector()
+
+    func supportsTerminal(bundleIdentifier: String) -> Bool {
+        TerminalTabInspector.supportsTerminal(bundleIdentifier: bundleIdentifier)
+    }
+
+    func foregroundContext(bundleIdentifier: String) -> TerminalContextResult {
+        let inspector = inspector
+        return inspector.queue.sync {
+            inspector.foregroundContext(bundleIdentifier: bundleIdentifier)
+        }
+    }
+
+    func foregroundContextInBackground(bundleIdentifier: String) async -> TerminalContextResult {
+        let inspector = inspector
+        return await withCheckedContinuation { continuation in
+            inspector.queue.async {
+                continuation.resume(returning: inspector.foregroundContext(bundleIdentifier: bundleIdentifier))
+            }
+        }
+    }
+}
+
+/// Does the work of SystemTerminalContextProvider on its own serial queue. An
+/// Apple Event to the terminal takes 25 ms and sometimes up to a second, and
+/// the main thread also handles every key press, so the terminal is polled
+/// from here. Everything but the queue is only touched on the queue.
+private final class TerminalTabInspector: @unchecked Sendable {
     private static let ttyScripts: [String: String] = [
         "com.apple.Terminal": "tty of selected tab of front window",
         "com.googlecode.iterm2": "tty of current session of current window",
     ]
 
-    private var compiledScripts: [String: NSAppleScript] = [:]
+    static func supportsTerminal(bundleIdentifier: String) -> Bool {
+        ttyScripts[bundleIdentifier] != nil
+    }
+
+    let queue = DispatchQueue(label: "com.moli.MoliSwitch.terminal", qos: .userInitiated)
+
+    /// A language instance of its own, so scripts can run off the main thread.
+    private lazy var languageInstance: OSALanguageInstance? = OSALanguage(forName: "AppleScript")
+        .map { OSALanguageInstance(language: $0) }
+    private var compiledScripts: [String: OSAScript] = [:]
     private var pendingConsent: Set<String> = []
     private var programCache: [String: ForegroundProgram] = [:]
 
-    func supportsTerminal(bundleIdentifier: String) -> Bool {
-        Self.ttyScripts[bundleIdentifier] != nil
-    }
-
     func foregroundContext(bundleIdentifier: String) -> TerminalContextResult {
-        switch permissionStatus(for: bundleIdentifier) {
+        dispatchPrecondition(condition: .onQueue(queue))
+
+        switch Self.determinePermission(for: bundleIdentifier, askUserIfNeeded: false) {
         case noErr:
             break
         case OSStatus(errAEEventNotPermitted):
@@ -74,11 +110,7 @@ final class SystemTerminalContextProvider: TerminalContextProviding {
 
     // MARK: - Apple Events
 
-    private func permissionStatus(for bundleIdentifier: String, askUserIfNeeded: Bool = false) -> OSStatus {
-        Self.determinePermission(for: bundleIdentifier, askUserIfNeeded: askUserIfNeeded)
-    }
-
-    nonisolated private static func determinePermission(
+    private static func determinePermission(
         for bundleIdentifier: String,
         askUserIfNeeded: Bool
     ) -> OSStatus {
@@ -91,19 +123,15 @@ final class SystemTerminalContextProvider: TerminalContextProviding {
         )
     }
 
-    /// Asks once, off the main thread: the system prompt blocks the caller until
-    /// the user answers.
+    /// Asks once, off this queue: the system prompt blocks the caller until the
+    /// user answers.
     private func requestConsent(for bundleIdentifier: String) {
         guard pendingConsent.insert(bundleIdentifier).inserted else { return }
 
-        Task.detached { [weak self] in
+        Task.detached { [self] in
             _ = Self.determinePermission(for: bundleIdentifier, askUserIfNeeded: true)
-            await self?.consentRequestFinished(for: bundleIdentifier)
+            queue.async { self.pendingConsent.remove(bundleIdentifier) }
         }
-    }
-
-    private func consentRequestFinished(for bundleIdentifier: String) {
-        pendingConsent.remove(bundleIdentifier)
     }
 
     private func activeTTY(bundleIdentifier: String) -> String? {
@@ -112,27 +140,26 @@ final class SystemTerminalContextProvider: TerminalContextProviding {
         var error: NSDictionary?
         let start = ContinuousClock.now
         let result = script.executeAndReturnError(&error)
-        // Runs on the main thread, where it holds up every key press.
         let elapsed = Diagnostics.milliseconds(since: start)
         Diagnostics.terminal.debug("active tab asked in \(elapsed, privacy: .public) ms")
-        guard error == nil, let tty = result.stringValue, tty.hasPrefix("/dev/") else {
+        guard error == nil, let tty = result?.stringValue, tty.hasPrefix("/dev/") else {
             return nil
         }
         return tty
     }
 
-    private func compiledScript(for bundleIdentifier: String) -> NSAppleScript? {
+    private func compiledScript(for bundleIdentifier: String) -> OSAScript? {
         if let script = compiledScripts[bundleIdentifier] {
             return script
         }
-        guard let expression = Self.ttyScripts[bundleIdentifier] else { return nil }
+        guard let expression = Self.ttyScripts[bundleIdentifier], let languageInstance else { return nil }
 
         let source = """
             with timeout of 1 second
                 tell application id "\(bundleIdentifier)" to return \(expression)
             end timeout
             """
-        guard let script = NSAppleScript(source: source) else { return nil }
+        let script = OSAScript(source: source, from: nil, languageInstance: languageInstance, using: [])
 
         var error: NSDictionary?
         guard script.compileAndReturnError(&error) else { return nil }

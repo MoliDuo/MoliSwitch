@@ -45,6 +45,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),
+                .linkedFramework("OSAKit"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("SwiftUI")
             ]
