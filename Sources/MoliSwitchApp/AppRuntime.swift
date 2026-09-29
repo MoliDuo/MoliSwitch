@@ -16,6 +16,7 @@ final class AppRuntime: ObservableObject {
     /// Not shown in the settings: how long a slash waits after the switch, in
     /// milliseconds, for trying out what an application needs.
     static let slashCommandSwitchDelayKey = "slashCommandSwitchDelayMilliseconds"
+    static let shiftEnglishEnabledKey = "shiftEnglishEnabled"
     /// Settings picker value for "detect the input source automatically".
     static let automaticInputSourceID = ""
     /// Picker value of an application without a rule, which switches to the
@@ -41,6 +42,9 @@ final class AppRuntime: ObservableObject {
     @Published private(set) var fieldRuleEditingEnabled = true
     @Published private(set) var slashCommandApps = SlashCommandAppList()
     @Published private(set) var slashCommandAppEditingEnabled = true
+    /// Applications where holding Shift does not switch to English.
+    @Published private(set) var shiftExcludedApps = SlashCommandAppList()
+    @Published private(set) var shiftExcludedAppEditingEnabled = true
     /// True when key presses cannot be seen although everything asks for it.
     @Published private(set) var keyMonitoringUnavailable = false
     /// Whether MoliSwitch may use Accessibility to see the focused field.
@@ -130,6 +134,18 @@ final class AppRuntime: ObservableObject {
             slashCommandTracker.restoresOnSpace = slashCommandRestoresOnSpace
         }
     }
+    /// Whether characters typed with Shift held are typed with the English
+    /// input source, in every application but shiftExcludedApps.
+    @Published var shiftEnglishEnabled: Bool {
+        didSet {
+            guard shiftEnglishEnabled != oldValue else { return }
+            defaults.set(shiftEnglishEnabled, forKey: Self.shiftEnglishEnabledKey)
+            if !shiftEnglishEnabled {
+                shiftTracker.cancel()
+            }
+            updateKeyMonitoring()
+        }
+    }
     /// What applications without a rule switch to: noSwitchInputSourceID, a
     /// role, or an input source.
     @Published var defaultInputSourceSelection: String {
@@ -147,9 +163,11 @@ final class AppRuntime: ObservableObject {
     private let commandStore: any CommandRuleStore
     private let fieldStore: any FieldRuleStore
     private let slashCommandAppStore: any SlashCommandAppStore
+    private let shiftExcludedAppStore: any SlashCommandAppStore
     private let keyEventMonitor: any KeyEventMonitoring
     private let slashCommandSwitchDelay: Duration
     private let slashCommandRestoreDelay: Duration
+    private let shiftRestoreDelay: Duration
     private let focusedFieldProvider: any FocusedFieldProviding
     private let terminalContextProvider: any TerminalContextProviding
     private let terminalPollInterval: TimeInterval
@@ -185,14 +203,25 @@ final class AppRuntime: ObservableObject {
 
     private var slashCommandTracker: SlashCommandTracker
 
+    private var shiftTracker = ShiftEnglishTracker()
+    /// Types the key held back for Shift once the English input source is in.
+    private var shiftSwitchTask: Task<Void, Never>?
+    /// Switches back after Shift was let go; keys wait for it meanwhile.
+    private var shiftRestoreTask: Task<Void, Never>?
+    private var shiftRestoreHoldsKeys = false
+
     init(
         store: any RuleStore = JSONRuleStore.applicationSupportStore(),
         commandStore: any CommandRuleStore = JSONCommandRuleStore.applicationSupportStore(),
         fieldStore: any FieldRuleStore = JSONFieldRuleStore.applicationSupportStore(),
         slashCommandAppStore: any SlashCommandAppStore = JSONSlashCommandAppStore.applicationSupportStore(),
+        shiftExcludedAppStore: any SlashCommandAppStore = JSONSlashCommandAppStore.applicationSupportStore(
+            fileName: "shift-excluded-apps.json"
+        ),
         keyEventMonitor: any KeyEventMonitoring = SystemKeyEventMonitor(),
         slashCommandSwitchDelay: Duration = .milliseconds(20),
         slashCommandRestoreDelay: Duration = .milliseconds(80),
+        shiftRestoreDelay: Duration = .milliseconds(20),
         focusedFieldProvider: any FocusedFieldProviding = SystemFocusedFieldProvider(),
         terminalContextProvider: any TerminalContextProviding = SystemTerminalContextProvider(),
         terminalPollInterval: TimeInterval = 0.5,
@@ -209,9 +238,11 @@ final class AppRuntime: ObservableObject {
         self.commandStore = commandStore
         self.fieldStore = fieldStore
         self.slashCommandAppStore = slashCommandAppStore
+        self.shiftExcludedAppStore = shiftExcludedAppStore
         self.keyEventMonitor = keyEventMonitor
         self.slashCommandSwitchDelay = slashCommandSwitchDelay
         self.slashCommandRestoreDelay = slashCommandRestoreDelay
+        self.shiftRestoreDelay = shiftRestoreDelay
         self.focusedFieldProvider = focusedFieldProvider
         self.terminalContextProvider = terminalContextProvider
         self.terminalPollInterval = terminalPollInterval
@@ -239,6 +270,7 @@ final class AppRuntime: ObservableObject {
         let restoresOnSpace = defaults.bool(forKey: Self.slashCommandRestoresOnSpaceKey)
         self.slashCommandRestoresOnSpace = restoresOnSpace
         self.slashCommandTracker = SlashCommandTracker(restoresOnSpace: restoresOnSpace)
+        self.shiftEnglishEnabled = defaults.bool(forKey: Self.shiftEnglishEnabledKey)
         self.accessibilityTrusted = focusedFieldProvider.isTrusted
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
@@ -287,7 +319,7 @@ final class AppRuntime: ObservableObject {
     /// and the original file is left untouched.
     var hasStorageFailure: Bool {
         !ruleEditingEnabled || !commandRuleEditingEnabled || !fieldRuleEditingEnabled
-            || !slashCommandAppEditingEnabled
+            || !slashCommandAppEditingEnabled || !shiftExcludedAppEditingEnabled
     }
 
     func reloadRulesFromDisk() {
@@ -316,6 +348,7 @@ final class AppRuntime: ObservableObject {
             loadCommandRules()
             loadFieldRules()
             loadSlashCommandApps()
+            loadShiftExcludedApps()
             return
         }
 
@@ -327,6 +360,9 @@ final class AppRuntime: ObservableObject {
         }
         if !loadSlashCommandApps() {
             storageStatus = .slashCommandAppsReadFailure
+        }
+        if !loadShiftExcludedApps() {
+            storageStatus = .shiftExcludedAppsReadFailure
         }
     }
 
@@ -366,6 +402,18 @@ final class AppRuntime: ObservableObject {
         }
     }
 
+    @discardableResult
+    private func loadShiftExcludedApps() -> Bool {
+        do {
+            shiftExcludedApps = SlashCommandAppList(normalizing: try shiftExcludedAppStore.load())
+            shiftExcludedAppEditingEnabled = true
+            return true
+        } catch {
+            shiftExcludedAppEditingEnabled = false
+            return false
+        }
+    }
+
     func revealRulesFileInFinder() {
         let url: URL
         if !ruleEditingEnabled {
@@ -376,6 +424,8 @@ final class AppRuntime: ObservableObject {
             url = fieldStore.url
         } else if !slashCommandAppEditingEnabled {
             url = slashCommandAppStore.url
+        } else if !shiftExcludedAppEditingEnabled {
+            url = shiftExcludedAppStore.url
         } else {
             url = store.url
         }
@@ -421,6 +471,18 @@ final class AppRuntime: ObservableObject {
             )
         }
 
+        // Applications chosen from elsewhere for slash commands or Shift.
+        for app in slashCommandApps.apps + shiftExcludedApps.apps
+        where seenBundleIdentifiers.insert(app.bundleIdentifier).inserted {
+            result.append(
+                InstalledApplication(
+                    name: app.applicationName,
+                    bundleIdentifier: app.bundleIdentifier,
+                    url: NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)
+                )
+            )
+        }
+
         return result.sorted { lhs, rhs in
             let comparison = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
             if comparison == .orderedSame {
@@ -430,11 +492,19 @@ final class AppRuntime: ObservableObject {
         }
     }
 
+    /// Applications with anything of their own: a rule, slash commands, or
+    /// Shift turned off.
+    private var configuredBundleIdentifiers: Set<String> {
+        Set(ruleSet.rules.map(\.bundleIdentifier))
+            .union(slashCommandApps.apps.map(\.bundleIdentifier))
+            .union(shiftExcludedApps.apps.map(\.bundleIdentifier))
+    }
+
     var filteredInstalledApplications: [InstalledApplication] {
         let filter = ApplicationListFilter(
             query: searchText,
             scope: applicationListScope,
-            configuredBundleIdentifiers: Set(ruleSet.rules.map(\.bundleIdentifier))
+            configuredBundleIdentifiers: configuredBundleIdentifiers
         )
 
         return displayApplications.filter {
@@ -951,28 +1021,76 @@ final class AppRuntime: ObservableObject {
         }
     }
 
+    func usesSlashCommands(_ application: InstalledApplication) -> Bool {
+        slashCommandApps.contains(bundleIdentifier: application.bundleIdentifier)
+    }
+
+    func setUsesSlashCommands(_ enabled: Bool, for application: InstalledApplication) {
+        if enabled {
+            addSlashCommandApp(application)
+        } else {
+            removeSlashCommandApp(bundleIdentifier: application.bundleIdentifier)
+        }
+    }
+
+    // MARK: - Shift
+
+    func usesShiftEnglish(_ application: InstalledApplication) -> Bool {
+        !shiftExcludedApps.contains(bundleIdentifier: application.bundleIdentifier)
+    }
+
+    func setUsesShiftEnglish(_ enabled: Bool, for application: InstalledApplication) {
+        guard shiftExcludedAppEditingEnabled else {
+            storageStatus = .shiftExcludedAppsReadFailure
+            return
+        }
+
+        var candidate = shiftExcludedApps
+        if enabled {
+            candidate.remove(bundleIdentifier: application.bundleIdentifier)
+        } else {
+            candidate.insert(
+                SlashCommandApp(bundleIdentifier: application.bundleIdentifier, applicationName: application.name)
+            )
+        }
+        guard candidate != shiftExcludedApps else { return }
+
+        do {
+            try shiftExcludedAppStore.save(candidate.apps)
+            shiftExcludedApps = candidate
+            storageStatus = .rulesSaved
+        } catch {
+            storageStatus = .rulesSaveFailure
+        }
+    }
+
+    /// Whether Shift switches to English in the application.
+    private func watchesShift(in app: RunningApplicationInfo) -> Bool {
+        shiftEnglishEnabled && !shiftExcludedApps.contains(bundleIdentifier: app.bundleIdentifier)
+    }
+
     /// Whether a slash typed in the application may start a command.
     private func watchesSlashCommands(in app: RunningApplicationInfo) -> Bool {
         slashCommandSwitchingEnabled && slashCommandApps.contains(bundleIdentifier: app.bundleIdentifier)
     }
 
-    /// Key presses are only looked at while a listed application could use
+    /// Key presses are only looked at while slash commands or Shift could use
     /// them, and Accessibility allows it.
     private func updateKeyMonitoring() {
         let wanted = !hasStopped
-            && slashCommandSwitchingEnabled
-            && !slashCommandApps.apps.isEmpty
+            && ((slashCommandSwitchingEnabled && !slashCommandApps.apps.isEmpty) || shiftEnglishEnabled)
             && accessibilityTrusted
 
         if wanted {
             if !keyEventMonitor.isRunning {
-                keyEventMonitor.start { [weak self] key in
-                    self?.handleKeyEvent(key) ?? false
+                keyEventMonitor.start { [weak self] event in
+                    self?.handleKeyEvent(event) ?? false
                 }
             }
         } else if keyEventMonitor.isRunning {
             keyEventMonitor.stop()
             slashCommandTracker.cancelCommand()
+            shiftTracker.cancel()
         }
 
         let unavailable = wanted && !keyEventMonitor.isRunning
@@ -982,11 +1100,115 @@ final class AppRuntime: ObservableObject {
     }
 
     /// Returns true to hold the key back until the monitor is told to type it.
-    func handleKeyEvent(_ key: SlashCommandKey) -> Bool {
-        guard let app = currentApplication, watchesSlashCommands(in: app) else { return false }
+    func handleKeyEvent(_ event: MonitoredKeyEvent) -> Bool {
+        switch event {
+        case .shiftReleased:
+            let decision = shiftTracker.shiftReleased(currentID: inputSourceManager.currentInputSource()?.id)
+            if case .restore(let previousID) = decision {
+                restoreAfterShift(previousID)
+            }
+            return false
+        case .keyDown(let key, let shifted):
+            return handleKeyDown(key, shifted: shifted)
+        }
+    }
+
+    private func handleKeyDown(_ key: SlashCommandKey, shifted: Bool) -> Bool {
+        // Keys typed while Shift switches back wait for it, so they are typed
+        // with the input source used before.
+        if shiftRestoreTask != nil {
+            shiftRestoreHoldsKeys = true
+            return true
+        }
+        guard let app = currentApplication else { return false }
 
         let pressed = ContinuousClock.now
         let currentID = inputSourceManager.currentInputSource()?.id
+
+        var shiftDecision = ShiftEnglishTracker.Decision.pass
+        if shiftTracker.isSwitched || watchesShift(in: app) {
+            shiftDecision = shiftTracker.handle(
+                key,
+                shifted: shifted,
+                currentID: currentID,
+                englishID: effectiveEnglishInputSource?.id
+            )
+            if shiftDecision != .pass {
+                Diagnostics.shift.debug(
+                    "key \(String(describing: key), privacy: .public) in \(app.bundleIdentifier, privacy: .public) with \(currentID ?? "nil", privacy: .public): \(String(describing: shiftDecision), privacy: .public)"
+                )
+            }
+        }
+
+        // The slash tracker sees every key, so it knows what was typed.
+        let holdsForSlash = watchesSlashCommands(in: app)
+            && handleSlashCommandKey(key, in: app, currentID: currentID, pressed: pressed)
+
+        switch shiftDecision {
+        case .pass:
+            return holdsForSlash
+        case .switchToEnglish(let englishID):
+            guard selectInputSourceForKeys(englishID) else {
+                shiftTracker.cancel()
+                return holdsForSlash
+            }
+            shiftSwitchTask = releaseHeldKeys(after: effectiveSlashCommandSwitchDelay, pressed: pressed)
+            return true
+        case .restore(let previousID):
+            // Shift was let go without the monitor seeing it.
+            shiftRestoreHoldsKeys = true
+            restoreAfterShift(previousID)
+            return true
+        }
+    }
+
+    /// Switches back once the key typed with Shift reached the application,
+    /// then types the keys pressed meanwhile.
+    private func restoreAfterShift(_ previousID: String) {
+        let englishID = inputSourceManager.currentInputSource()?.id
+        let pendingSwitch = shiftSwitchTask
+        let delay = shiftRestoreDelay
+        let switchDelay = effectiveSlashCommandSwitchDelay
+        shiftRestoreTask = Task { [weak self] in
+            await pendingSwitch?.value
+            try? await Task.sleep(for: delay, tolerance: .milliseconds(1))
+            guard let self else { return }
+
+            let selectedID = self.inputSourceManager.currentInputSource()?.id
+            if selectedID == englishID {
+                self.selectInputSourceForKeys(previousID)
+            } else {
+                Diagnostics.shift.info("restore skipped, \(selectedID ?? "nil", privacy: .public) was selected meanwhile")
+            }
+
+            if self.shiftRestoreHoldsKeys {
+                try? await Task.sleep(for: switchDelay, tolerance: .milliseconds(1))
+                self.keyEventMonitor.releaseHeldKeys()
+            }
+            self.shiftRestoreHoldsKeys = false
+            self.shiftRestoreTask = nil
+        }
+    }
+
+    /// Types the held keys once the application had a moment to leave the
+    /// input method, or it would still type the first one with it.
+    private func releaseHeldKeys(after delay: Duration, pressed: ContinuousClock.Instant) -> Task<Void, Never> {
+        Task { [weak self] in
+            // Without a tolerance the timer may fire 10 ms late.
+            try? await Task.sleep(for: delay, tolerance: .milliseconds(1))
+            self?.keyEventMonitor.releaseHeldKeys()
+            let elapsed = Diagnostics.milliseconds(since: pressed)
+            Diagnostics.slash.debug("held keys released \(elapsed, privacy: .public) ms after the first was pressed")
+        }
+    }
+
+    /// Returns true to hold the key back.
+    private func handleSlashCommandKey(
+        _ key: SlashCommandKey,
+        in app: RunningApplicationInfo,
+        currentID: String?,
+        pressed: ContinuousClock.Instant
+    ) -> Bool {
         let decision = slashCommandTracker.handle(
             key,
             currentID: currentID,
@@ -1011,20 +1233,12 @@ final class AppRuntime: ObservableObject {
         case .pass:
             return false
         case .switchToEnglish(let englishID):
-            guard selectSlashCommandInputSource(englishID) else {
+            guard selectInputSourceForKeys(englishID) else {
                 slashCommandTracker.cancelCommand()
                 return false
             }
-            // The application needs a moment to leave the input method, or it
-            // would still type the slash as 「、」.
-            let delay = effectiveSlashCommandSwitchDelay
-            Task { [weak self] in
-                // Without a tolerance the timer may fire 10 ms late.
-                try? await Task.sleep(for: delay, tolerance: .milliseconds(1))
-                self?.keyEventMonitor.releaseHeldKeys()
-                let elapsed = Diagnostics.milliseconds(since: pressed)
-                Diagnostics.slash.debug("slash released \(elapsed, privacy: .public) ms after it was pressed")
-            }
+            // Otherwise the slash would still be typed as 「、」.
+            _ = releaseHeldKeys(after: effectiveSlashCommandSwitchDelay, pressed: pressed)
             return true
         case .restore(let previousID):
             // Return and Escape reach the application first, still typed with
@@ -1041,7 +1255,7 @@ final class AppRuntime: ObservableObject {
                     )
                     return
                 }
-                self.selectSlashCommandInputSource(previousID)
+                self.selectInputSourceForKeys(previousID)
             }
             return false
         }
@@ -1063,12 +1277,12 @@ final class AppRuntime: ObservableObject {
             Diagnostics.slash.info("focus changed during a command: \(String(describing: decision), privacy: .public)")
         }
         if case .restore(let previousID) = decision {
-            selectSlashCommandInputSource(previousID)
+            selectInputSourceForKeys(previousID)
         }
     }
 
     @discardableResult
-    private func selectSlashCommandInputSource(_ id: String) -> Bool {
+    private func selectInputSourceForKeys(_ id: String) -> Bool {
         let start = ContinuousClock.now
         let selected = inputSourceManager.selectInputSource(id: id)
         let elapsed = Diagnostics.milliseconds(since: start)
@@ -1407,6 +1621,8 @@ final class AppRuntime: ObservableObject {
         terminalContextInEffect = context
         fieldRestore = nil
         endSlashCommandForFocusChange()
+        // The rule of the application decides now.
+        shiftTracker.cancel()
         followFields(of: app)
 
         apply(activeRule(for: app))

@@ -1,12 +1,13 @@
 import Foundation
 import os
 
-/// Diagnostics for slash commands, read with
+/// Diagnostics for slash commands and Shift, read with
 /// `log stream --predicate 'subsystem == "com.moli.MoliSwitch"' --level debug`.
 /// Only kinds of keys, decisions, input source identifiers and timings are
 /// logged, never what was typed.
 enum Diagnostics {
     static let slash = Logger(subsystem: "com.moli.MoliSwitch", category: "slash")
+    static let shift = Logger(subsystem: "com.moli.MoliSwitch", category: "shift")
     static let terminal = Logger(subsystem: "com.moli.MoliSwitch", category: "terminal")
 
     /// Milliseconds since a moment taken with ContinuousClock.now.

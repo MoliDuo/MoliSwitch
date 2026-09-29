@@ -410,14 +410,15 @@ final class FakeFocusedFieldProvider: FocusedFieldProviding {
 // MARK: - Slash commands
 
 final class FakeSlashCommandAppStore: SlashCommandAppStore, @unchecked Sendable {
-    let url = URL(fileURLWithPath: "/tmp/MoliSwitchTests/slash-command-apps.json")
+    let url: URL
 
     private let lock = NSLock()
     private var storedApps: [SlashCommandApp]
     private var loadError: Error?
 
-    init(apps: [SlashCommandApp] = []) {
+    init(apps: [SlashCommandApp] = [], fileName: String = "slash-command-apps.json") {
         self.storedApps = apps
+        self.url = URL(fileURLWithPath: "/tmp/MoliSwitchTests/" + fileName)
     }
 
     var apps: [SlashCommandApp] {
@@ -460,14 +461,14 @@ final class FakeKeyEventMonitor: KeyEventMonitoring {
     private(set) var heldKeys: [SlashCommandKey] = []
     /// Keys that reached the application, in order.
     private(set) var typedKeys: [SlashCommandKey] = []
-    private var handler: (@MainActor (SlashCommandKey) -> Bool)?
+    private var handler: (@MainActor (MonitoredKeyEvent) -> Bool)?
 
     var isRunning: Bool {
         handler != nil
     }
 
     @discardableResult
-    func start(_ handler: @escaping @MainActor (SlashCommandKey) -> Bool) -> Bool {
+    func start(_ handler: @escaping @MainActor (MonitoredKeyEvent) -> Bool) -> Bool {
         startCount += 1
         guard canStart else { return false }
         self.handler = handler
@@ -486,8 +487,8 @@ final class FakeKeyEventMonitor: KeyEventMonitoring {
     }
 
     /// Presses a key the way SystemKeyEventMonitor sees it.
-    func press(_ key: SlashCommandKey) {
-        let hold = handler?(key) ?? false
+    func press(_ key: SlashCommandKey, shifted: Bool = false) {
+        let hold = handler?(.keyDown(key, shifted: shifted)) ?? false
         if hold || !heldKeys.isEmpty {
             heldKeys.append(key)
         } else {
@@ -499,5 +500,10 @@ final class FakeKeyEventMonitor: KeyEventMonitoring {
         for key in keys {
             press(key)
         }
+    }
+
+    /// Lets go of both Shift keys.
+    func releaseShift() {
+        _ = handler?(.shiftReleased)
     }
 }

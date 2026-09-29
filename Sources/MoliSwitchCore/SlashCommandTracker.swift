@@ -18,6 +18,13 @@ public enum SlashCommandKey: Equatable, Sendable {
     case other
 }
 
+/// What the key monitor passes on: a key pressed, or both Shift keys let go.
+public enum MonitoredKeyEvent: Equatable, Sendable {
+    /// shifted is set when Shift is held without ⌘, ⌃ or ⌥.
+    case keyDown(SlashCommandKey, shifted: Bool)
+    case shiftReleased
+}
+
 /// Decides when a slash starts a command, which is typed with the English
 /// input source, and when the command is over and the input source used
 /// before it comes back.

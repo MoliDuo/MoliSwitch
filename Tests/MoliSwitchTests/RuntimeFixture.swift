@@ -29,6 +29,7 @@ struct RuntimeFixture {
     let commandStore: FakeCommandRuleStore
     let fieldStore: FakeFieldRuleStore
     let slashCommandAppStore: FakeSlashCommandAppStore
+    let shiftExcludedAppStore: FakeSlashCommandAppStore
     let keys: FakeKeyEventMonitor
     let fields: FakeFocusedFieldProvider
     let terminal: FakeTerminalContextProvider
@@ -46,6 +47,7 @@ func makeFixture(
     commandRules: [CommandRule] = [],
     fieldRules: [FieldRule] = [],
     slashCommandApps: [SlashCommandApp] = [],
+    shiftExcludedApps: [SlashCommandApp] = [],
     installedApplications: [InstalledApplication] = [],
     sources: [InputSource] = TestInputSources.all,
     current: InputSource? = TestInputSources.us,
@@ -60,6 +62,7 @@ func makeFixture(
     let commandStore = FakeCommandRuleStore(rules: commandRules)
     let fieldStore = FakeFieldRuleStore(rules: fieldRules)
     let slashCommandAppStore = FakeSlashCommandAppStore(apps: slashCommandApps)
+    let shiftExcludedAppStore = FakeSlashCommandAppStore(apps: shiftExcludedApps, fileName: "shift-excluded-apps.json")
     let keys = FakeKeyEventMonitor()
     let fields = FakeFocusedFieldProvider()
     let terminal = FakeTerminalContextProvider()
@@ -80,9 +83,11 @@ func makeFixture(
         commandStore: commandStore,
         fieldStore: fieldStore,
         slashCommandAppStore: slashCommandAppStore,
+        shiftExcludedAppStore: shiftExcludedAppStore,
         keyEventMonitor: keys,
         slashCommandSwitchDelay: .zero,
         slashCommandRestoreDelay: .zero,
+        shiftRestoreDelay: .zero,
         focusedFieldProvider: fields,
         terminalContextProvider: terminal,
         terminalPollInterval: 0.02,
@@ -108,6 +113,7 @@ func makeFixture(
         commandStore: commandStore,
         fieldStore: fieldStore,
         slashCommandAppStore: slashCommandAppStore,
+        shiftExcludedAppStore: shiftExcludedAppStore,
         keys: keys,
         fields: fields,
         terminal: terminal,

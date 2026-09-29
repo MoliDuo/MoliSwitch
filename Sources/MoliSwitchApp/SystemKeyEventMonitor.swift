@@ -15,8 +15,9 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var handler: (@MainActor (SlashCommandKey) -> Bool)?
+    private var handler: (@MainActor (MonitoredKeyEvent) -> Bool)?
     private var heldEvents: [CGEvent] = []
+    private var shiftDown = false
     private var holdTimeout: Task<Void, Never>?
 
     var isRunning: Bool {
@@ -24,7 +25,7 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
     }
 
     @discardableResult
-    func start(_ handler: @escaping @MainActor (SlashCommandKey) -> Bool) -> Bool {
+    func start(_ handler: @escaping @MainActor (MonitoredKeyEvent) -> Bool) -> Bool {
         self.handler = handler
         guard tap == nil else { return true }
 
@@ -34,7 +35,8 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
                 options: .defaultTap,
-                eventsOfInterest: CGEventMask(1) << CGEventType.keyDown.rawValue,
+                eventsOfInterest: CGEventMask(1) << CGEventType.keyDown.rawValue
+                    | CGEventMask(1) << CGEventType.flagsChanged.rawValue,
                 callback: keyEventCallback,
                 userInfo: refcon
             )
@@ -63,6 +65,7 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
         tap = nil
         runLoopSource = nil
         handler = nil
+        shiftDown = false
     }
 
     func releaseHeldKeys() {
@@ -102,6 +105,15 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
             return false
+        case .flagsChanged:
+            // Modifier changes always go through; only letting go of Shift is
+            // passed on.
+            let shiftDown = event.flags.contains(.maskShift)
+            if self.shiftDown && !shiftDown {
+                _ = handler?(.shiftReleased)
+            }
+            self.shiftDown = shiftDown
+            return false
         case .keyDown:
             break
         default:
@@ -112,7 +124,10 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
             return false
         }
 
-        let hold = handler?(Self.key(for: event)) ?? false
+        let flags = event.flags
+        let shifted = flags.contains(.maskShift)
+            && flags.isDisjoint(with: [.maskCommand, .maskControl, .maskAlternate])
+        let hold = handler?(.keyDown(Self.key(for: event), shifted: shifted)) ?? false
         guard hold || isHolding, let copy = event.copy() else {
             return false
         }

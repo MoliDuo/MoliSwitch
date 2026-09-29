@@ -70,12 +70,15 @@ extension JSONFileStore: FieldRuleStore where Element == FieldRule {
 }
 
 extension JSONFileStore: SlashCommandAppStore where Element == SlashCommandApp {
+    /// Also keeps other lists of applications, such as the ones where Shift
+    /// does not switch, under another file name.
     public static func applicationSupportStore(
-        appName: String = "MoliSwitch"
+        appName: String = "MoliSwitch",
+        fileName: String = "slash-command-apps.json"
     ) -> JSONSlashCommandAppStore {
         JSONSlashCommandAppStore(
             url: applicationSupportDirectory(appName: appName)
-                .appendingPathComponent("slash-command-apps.json")
+                .appendingPathComponent(fileName)
         )
     }
 }
