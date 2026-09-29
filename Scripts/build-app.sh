@@ -163,6 +163,12 @@ fi
 
 chmod +x "$APP_PATH/Contents/MacOS/$APP_NAME"
 
+# SwiftPM 把链接时的 SDK 版本记成最低系统版本，新系统因此按旧版外观显示窗口
+# （macOS 27 上侧边栏旁的工具栏背景还会错位）。改记成实际使用的 SDK 版本。
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+vtool -set-build-version macos "$MINIMUM_SYSTEM_VERSION" "$SDK_VERSION" -replace \
+    -output "$APP_PATH/Contents/MacOS/$APP_NAME" "$APP_PATH/Contents/MacOS/$APP_NAME"
+
 if [ "$UNIVERSAL" = "1" ]; then
     built_archs="$(lipo -archs "$APP_PATH/Contents/MacOS/$APP_NAME")"
     case "$built_archs" in
