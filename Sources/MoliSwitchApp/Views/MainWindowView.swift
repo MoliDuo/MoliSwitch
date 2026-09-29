@@ -4,6 +4,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case applications
     case terminal
     case fields
+    case slashCommands
     case general
 
     var id: String { rawValue }
@@ -13,6 +14,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .applications: "应用"
         case .terminal: "终端程序"
         case .fields: "输入框"
+        case .slashCommands: "斜杠命令"
         case .general: "通用"
         }
     }
@@ -22,6 +24,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .applications: "square.grid.2x2"
         case .terminal: "terminal"
         case .fields: "character.cursor.ibeam"
+        case .slashCommands: "slash.circle"
         case .general: "gearshape"
         }
     }
@@ -38,6 +41,7 @@ struct MainWindowView: View {
                     sidebarRow(.applications)
                     sidebarRow(.terminal)
                     sidebarRow(.fields)
+                    sidebarRow(.slashCommands)
                 }
                 Section {
                     sidebarRow(.general)
@@ -81,6 +85,8 @@ struct MainWindowView: View {
             TerminalPage(runtime: runtime)
         case .fields:
             FieldsPage(runtime: runtime)
+        case .slashCommands:
+            SlashCommandsPage(runtime: runtime)
         case .general:
             GeneralPage(runtime: runtime)
         }

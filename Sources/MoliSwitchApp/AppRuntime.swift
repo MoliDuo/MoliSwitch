@@ -11,6 +11,8 @@ final class AppRuntime: ObservableObject {
     static let defaultInputSourceIDKey = "defaultInputSourceID"
     static let addressBarSwitchingEnabledKey = "addressBarSwitchingEnabled"
     static let addressBarInputSourceIDKey = "addressBarInputSourceID"
+    static let slashCommandSwitchingEnabledKey = "slashCommandSwitchingEnabled"
+    static let slashCommandRestoresOnSpaceKey = "slashCommandRestoresOnSpace"
     /// Settings picker value for "detect the input source automatically".
     static let automaticInputSourceID = ""
     /// Picker value of an application without a rule, which switches to the
@@ -34,6 +36,10 @@ final class AppRuntime: ObservableObject {
     @Published private(set) var commandRuleEditingEnabled = true
     @Published private(set) var fieldRuleSet = FieldRuleSet()
     @Published private(set) var fieldRuleEditingEnabled = true
+    @Published private(set) var slashCommandApps = SlashCommandAppList()
+    @Published private(set) var slashCommandAppEditingEnabled = true
+    /// True when key presses cannot be seen although everything asks for it.
+    @Published private(set) var keyMonitoringUnavailable = false
     /// Whether MoliSwitch may use Accessibility to see the focused field.
     @Published private(set) var accessibilityTrusted = false
     /// The program most recently seen in the foreground of a terminal tab.
@@ -101,6 +107,24 @@ final class AppRuntime: ObservableObject {
             refreshFieldObservation()
         }
     }
+    /// Whether a slash at the start of the input switches to the English input
+    /// source in the applications of slashCommandApps.
+    @Published var slashCommandSwitchingEnabled: Bool {
+        didSet {
+            guard slashCommandSwitchingEnabled != oldValue else { return }
+            defaults.set(slashCommandSwitchingEnabled, forKey: Self.slashCommandSwitchingEnabledKey)
+            updateKeyMonitoring()
+            refreshFieldObservation()
+        }
+    }
+    /// Whether a space ends a slash command, like Return does.
+    @Published var slashCommandRestoresOnSpace: Bool {
+        didSet {
+            guard slashCommandRestoresOnSpace != oldValue else { return }
+            defaults.set(slashCommandRestoresOnSpace, forKey: Self.slashCommandRestoresOnSpaceKey)
+            slashCommandTracker.restoresOnSpace = slashCommandRestoresOnSpace
+        }
+    }
     /// What applications without a rule switch to: noSwitchInputSourceID, a
     /// role, or an input source.
     @Published var defaultInputSourceSelection: String {
@@ -117,6 +141,10 @@ final class AppRuntime: ObservableObject {
     private let store: any RuleStore
     private let commandStore: any CommandRuleStore
     private let fieldStore: any FieldRuleStore
+    private let slashCommandAppStore: any SlashCommandAppStore
+    private let keyEventMonitor: any KeyEventMonitoring
+    private let slashCommandSwitchDelay: Duration
+    private let slashCommandRestoreDelay: Duration
     private let focusedFieldProvider: any FocusedFieldProviding
     private let terminalContextProvider: any TerminalContextProviding
     private let terminalPollInterval: TimeInterval
@@ -149,10 +177,16 @@ final class AppRuntime: ObservableObject {
     /// as the one the field switched to is still selected.
     private var fieldRestore: (previousID: String, fieldID: String?)?
 
+    private var slashCommandTracker: SlashCommandTracker
+
     init(
         store: any RuleStore = JSONRuleStore.applicationSupportStore(),
         commandStore: any CommandRuleStore = JSONCommandRuleStore.applicationSupportStore(),
         fieldStore: any FieldRuleStore = JSONFieldRuleStore.applicationSupportStore(),
+        slashCommandAppStore: any SlashCommandAppStore = JSONSlashCommandAppStore.applicationSupportStore(),
+        keyEventMonitor: any KeyEventMonitoring = SystemKeyEventMonitor(),
+        slashCommandSwitchDelay: Duration = .milliseconds(40),
+        slashCommandRestoreDelay: Duration = .milliseconds(80),
         focusedFieldProvider: any FocusedFieldProviding = SystemFocusedFieldProvider(),
         terminalContextProvider: any TerminalContextProviding = SystemTerminalContextProvider(),
         terminalPollInterval: TimeInterval = 0.5,
@@ -167,6 +201,10 @@ final class AppRuntime: ObservableObject {
         self.store = store
         self.commandStore = commandStore
         self.fieldStore = fieldStore
+        self.slashCommandAppStore = slashCommandAppStore
+        self.keyEventMonitor = keyEventMonitor
+        self.slashCommandSwitchDelay = slashCommandSwitchDelay
+        self.slashCommandRestoreDelay = slashCommandRestoreDelay
         self.focusedFieldProvider = focusedFieldProvider
         self.terminalContextProvider = terminalContextProvider
         self.terminalPollInterval = terminalPollInterval
@@ -188,6 +226,11 @@ final class AppRuntime: ObservableObject {
         self.addressBarSwitchingEnabled = defaults.object(forKey: Self.addressBarSwitchingEnabledKey) as? Bool ?? true
         self.addressBarInputSourceSelection = defaults.string(forKey: Self.addressBarInputSourceIDKey)
             ?? Self.englishRuleID
+        self.slashCommandSwitchingEnabled = defaults.object(forKey: Self.slashCommandSwitchingEnabledKey) as? Bool
+            ?? true
+        let restoresOnSpace = defaults.bool(forKey: Self.slashCommandRestoresOnSpaceKey)
+        self.slashCommandRestoresOnSpace = restoresOnSpace
+        self.slashCommandTracker = SlashCommandTracker(restoresOnSpace: restoresOnSpace)
         self.accessibilityTrusted = focusedFieldProvider.isTrusted
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
@@ -224,6 +267,7 @@ final class AppRuntime: ObservableObject {
         inputSourceManager.stopMonitoringEnabledSources()
         stopTerminalPolling()
         stopFollowingFields()
+        updateKeyMonitoring()
         inputSourceManager.stopMonitoringSelectedSource()
         updateController?.stop()
     }
@@ -234,6 +278,7 @@ final class AppRuntime: ObservableObject {
     /// and the original file is left untouched.
     var hasStorageFailure: Bool {
         !ruleEditingEnabled || !commandRuleEditingEnabled || !fieldRuleEditingEnabled
+            || !slashCommandAppEditingEnabled
     }
 
     func reloadRulesFromDisk() {
@@ -247,6 +292,8 @@ final class AppRuntime: ObservableObject {
     }
 
     private func loadRulesFromDisk(reportingSuccess: Bool) {
+        defer { updateKeyMonitoring() }
+
         do {
             let loaded = try store.load()
             ruleSet = RuleSet(normalizing: loaded)
@@ -259,6 +306,7 @@ final class AppRuntime: ObservableObject {
             storageStatus = .rulesReadFailure
             loadCommandRules()
             loadFieldRules()
+            loadSlashCommandApps()
             return
         }
 
@@ -267,6 +315,9 @@ final class AppRuntime: ObservableObject {
         }
         if !loadFieldRules() {
             storageStatus = .fieldRulesReadFailure
+        }
+        if !loadSlashCommandApps() {
+            storageStatus = .slashCommandAppsReadFailure
         }
     }
 
@@ -294,6 +345,18 @@ final class AppRuntime: ObservableObject {
         }
     }
 
+    @discardableResult
+    private func loadSlashCommandApps() -> Bool {
+        do {
+            slashCommandApps = SlashCommandAppList(normalizing: try slashCommandAppStore.load())
+            slashCommandAppEditingEnabled = true
+            return true
+        } catch {
+            slashCommandAppEditingEnabled = false
+            return false
+        }
+    }
+
     func revealRulesFileInFinder() {
         let url: URL
         if !ruleEditingEnabled {
@@ -302,6 +365,8 @@ final class AppRuntime: ObservableObject {
             url = commandStore.url
         } else if !fieldRuleEditingEnabled {
             url = fieldStore.url
+        } else if !slashCommandAppEditingEnabled {
+            url = slashCommandAppStore.url
         } else {
             url = store.url
         }
@@ -838,6 +903,136 @@ final class AppRuntime: ObservableObject {
         }
     }
 
+    // MARK: - Slash commands
+
+    func addSlashCommandApp(_ application: InstalledApplication) {
+        guard slashCommandAppEditingEnabled else {
+            storageStatus = .slashCommandAppsReadFailure
+            return
+        }
+
+        var candidate = slashCommandApps
+        candidate.insert(
+            SlashCommandApp(bundleIdentifier: application.bundleIdentifier, applicationName: application.name)
+        )
+        guard candidate != slashCommandApps else { return }
+        commitSlashCommandApps(candidate)
+    }
+
+    func removeSlashCommandApp(bundleIdentifier: String) {
+        guard slashCommandAppEditingEnabled else {
+            storageStatus = .slashCommandAppsReadFailure
+            return
+        }
+
+        var candidate = slashCommandApps
+        guard candidate.remove(bundleIdentifier: bundleIdentifier) != nil else { return }
+        commitSlashCommandApps(candidate)
+    }
+
+    private func commitSlashCommandApps(_ candidate: SlashCommandAppList) {
+        do {
+            try slashCommandAppStore.save(candidate.apps)
+            slashCommandApps = candidate
+            storageStatus = .rulesSaved
+            updateKeyMonitoring()
+            refreshFieldObservation()
+        } catch {
+            storageStatus = .rulesSaveFailure
+        }
+    }
+
+    /// Whether a slash typed in the application may start a command.
+    private func watchesSlashCommands(in app: RunningApplicationInfo) -> Bool {
+        slashCommandSwitchingEnabled && slashCommandApps.contains(bundleIdentifier: app.bundleIdentifier)
+    }
+
+    /// Key presses are only looked at while a listed application could use
+    /// them, and Accessibility allows it.
+    private func updateKeyMonitoring() {
+        let wanted = !hasStopped
+            && slashCommandSwitchingEnabled
+            && !slashCommandApps.apps.isEmpty
+            && accessibilityTrusted
+
+        if wanted {
+            if !keyEventMonitor.isRunning {
+                keyEventMonitor.start { [weak self] key in
+                    self?.handleKeyEvent(key) ?? false
+                }
+            }
+        } else if keyEventMonitor.isRunning {
+            keyEventMonitor.stop()
+            slashCommandTracker.cancelCommand()
+        }
+
+        let unavailable = wanted && !keyEventMonitor.isRunning
+        if keyMonitoringUnavailable != unavailable {
+            keyMonitoringUnavailable = unavailable
+        }
+    }
+
+    /// Returns true to hold the key back until the monitor is told to type it.
+    func handleKeyEvent(_ key: SlashCommandKey) -> Bool {
+        guard let app = currentApplication, watchesSlashCommands(in: app) else { return false }
+
+        let decision = slashCommandTracker.handle(
+            key,
+            currentID: inputSourceManager.currentInputSource()?.id,
+            englishID: effectiveEnglishInputSource?.id,
+            caretAtStart: {
+                guard SlashCommandApp.reportsCaretPosition(bundleIdentifier: app.bundleIdentifier) else { return nil }
+                return focusedFieldProvider.isCaretAtStart()
+            }
+        )
+
+        switch decision {
+        case .pass:
+            return false
+        case .switchToEnglish(let englishID):
+            guard selectSlashCommandInputSource(englishID) else {
+                slashCommandTracker.cancelCommand()
+                return false
+            }
+            // The application needs a moment to leave the input method, or it
+            // would still type the slash as 「、」.
+            let delay = slashCommandSwitchDelay
+            Task { [weak self] in
+                try? await Task.sleep(for: delay)
+                self?.keyEventMonitor.releaseHeldKeys()
+            }
+            return true
+        case .restore(let previousID):
+            // Return and Escape reach the application first, still typed with
+            // the English input source.
+            let englishID = inputSourceManager.currentInputSource()?.id
+            let delay = slashCommandRestoreDelay
+            Task { [weak self] in
+                try? await Task.sleep(for: delay)
+                guard let self, self.inputSourceManager.currentInputSource()?.id == englishID else { return }
+                self.selectSlashCommandInputSource(previousID)
+            }
+            return false
+        }
+    }
+
+    /// Ends a command when focus moved to another field or application.
+    private func endSlashCommandForFocusChange() {
+        let decision = slashCommandTracker.focusChanged(currentID: inputSourceManager.currentInputSource()?.id)
+        if case .restore(let previousID) = decision {
+            selectSlashCommandInputSource(previousID)
+        }
+    }
+
+    @discardableResult
+    private func selectSlashCommandInputSource(_ id: String) -> Bool {
+        guard inputSourceManager.selectInputSource(id: id) else { return false }
+        switchCounter.recordSwitch()
+        switchCount = switchCounter.count
+        currentInputSource = inputSourceManager.currentInputSource()
+        return true
+    }
+
     // MARK: - Chinese and English input sources
 
     var effectiveChineseInputSource: InputSource? {
@@ -1148,6 +1343,7 @@ final class AppRuntime: ObservableObject {
         }
         terminalContextInEffect = context
         fieldRestore = nil
+        endSlashCommandForFocusChange()
         followFields(of: app)
 
         apply(activeRule(for: app))
@@ -1282,12 +1478,13 @@ final class AppRuntime: ObservableObject {
 
     // MARK: - Focused fields
 
-    /// Focus is only followed where a field rule could apply, so applications
-    /// without one are never touched through Accessibility.
+    /// Focus is only followed where a field rule or a slash command could apply,
+    /// so other applications are never touched through Accessibility.
     private func followsFields(_ app: RunningApplicationInfo) -> Bool {
         accessibilityTrusted
             && (fieldRuleSet.hasRules(forBundleIdentifier: app.bundleIdentifier)
-                || (addressBarSwitchingEnabled && AddressBarDetector.isBrowser(bundleIdentifier: app.bundleIdentifier)))
+                || (addressBarSwitchingEnabled && AddressBarDetector.isBrowser(bundleIdentifier: app.bundleIdentifier))
+                || watchesSlashCommands(in: app))
     }
 
     private func followFields(of app: RunningApplicationInfo) {
@@ -1315,6 +1512,7 @@ final class AppRuntime: ObservableObject {
     private func handleFocusedFieldChanged(_ field: FieldSignature?) {
         guard let app = fieldApplication, app == currentApplication, field != focusedField else { return }
         focusedField = field
+        endSlashCommandForFocusChange()
         reapplyIfContextChanged(for: app)
     }
 
@@ -1362,6 +1560,9 @@ final class AppRuntime: ObservableObject {
         let trusted = focusedFieldProvider.isTrusted
         if accessibilityTrusted != trusted {
             accessibilityTrusted = trusted
+            updateKeyMonitoring()
+        } else if keyMonitoringUnavailable {
+            updateKeyMonitoring()
         }
     }
 

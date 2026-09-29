@@ -52,4 +52,24 @@ protocol FocusedFieldProviding: AnyObject {
     func stopObserving()
     /// The focused text field of the frontmost application, if any.
     func currentField() -> FieldSignature?
+    /// Whether the caret of the focused text field is at the start of its
+    /// input, or nil when the application does not tell. Only the caret
+    /// position and the length are read.
+    func isCaretAtStart() -> Bool?
+}
+
+/// Sees the keys typed in every application, and can hold one back until the
+/// input source changed. Needs the Accessibility permission.
+@MainActor
+protocol KeyEventMonitoring: AnyObject {
+    var isRunning: Bool { get }
+    /// Calls the handler for every key pressed, in any application. Returning
+    /// true holds the key back, along with the keys pressed after it, until
+    /// releaseHeldKeys() is called. Returns false when monitoring could not
+    /// start, for example without the permission.
+    @discardableResult
+    func start(_ handler: @escaping @MainActor (SlashCommandKey) -> Bool) -> Bool
+    func stop()
+    /// Types the keys held back, in the order they were pressed.
+    func releaseHeldKeys()
 }

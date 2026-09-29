@@ -28,6 +28,8 @@ struct RuntimeFixture {
     let store: FakeRuleStore
     let commandStore: FakeCommandRuleStore
     let fieldStore: FakeFieldRuleStore
+    let slashCommandAppStore: FakeSlashCommandAppStore
+    let keys: FakeKeyEventMonitor
     let fields: FakeFocusedFieldProvider
     let terminal: FakeTerminalContextProvider
     let inputSources: FakeInputSourceManager
@@ -42,6 +44,7 @@ func makeFixture(
     rules: [AppRule] = [],
     commandRules: [CommandRule] = [],
     fieldRules: [FieldRule] = [],
+    slashCommandApps: [SlashCommandApp] = [],
     installedApplications: [InstalledApplication] = [],
     sources: [InputSource] = TestInputSources.all,
     current: InputSource? = TestInputSources.us,
@@ -55,6 +58,8 @@ func makeFixture(
     let store = FakeRuleStore(rules: rules)
     let commandStore = FakeCommandRuleStore(rules: commandRules)
     let fieldStore = FakeFieldRuleStore(rules: fieldRules)
+    let slashCommandAppStore = FakeSlashCommandAppStore(apps: slashCommandApps)
+    let keys = FakeKeyEventMonitor()
     let fields = FakeFocusedFieldProvider()
     let terminal = FakeTerminalContextProvider()
     let inputSources = FakeInputSourceManager(sources: sources, current: current)
@@ -72,6 +77,10 @@ func makeFixture(
         store: store,
         commandStore: commandStore,
         fieldStore: fieldStore,
+        slashCommandAppStore: slashCommandAppStore,
+        keyEventMonitor: keys,
+        slashCommandSwitchDelay: .zero,
+        slashCommandRestoreDelay: .zero,
         focusedFieldProvider: fields,
         terminalContextProvider: terminal,
         terminalPollInterval: 0.02,
@@ -95,6 +104,8 @@ func makeFixture(
         store: store,
         commandStore: commandStore,
         fieldStore: fieldStore,
+        slashCommandAppStore: slashCommandAppStore,
+        keys: keys,
         fields: fields,
         terminal: terminal,
         inputSources: inputSources,

@@ -358,6 +358,8 @@ final class FakeFocusedFieldProvider: FocusedFieldProviding {
     var isTrusted = true
     private(set) var requestTrustCount = 0
     private(set) var observedBundleIdentifier: String?
+    /// What isCaretAtStart reports.
+    var caretAtStart: Bool?
     private var field: FieldSignature?
     private var handler: (@MainActor (FieldSignature?) -> Void)?
 
@@ -379,9 +381,108 @@ final class FakeFocusedFieldProvider: FocusedFieldProviding {
         field
     }
 
+    func isCaretAtStart() -> Bool? {
+        caretAtStart
+    }
+
     /// Moves keyboard focus, as a click into another field would.
     func focus(_ field: FieldSignature?) {
         self.field = field
         handler?(field)
+    }
+}
+
+// MARK: - Slash commands
+
+final class FakeSlashCommandAppStore: SlashCommandAppStore, @unchecked Sendable {
+    let url = URL(fileURLWithPath: "/tmp/MoliSwitchTests/slash-command-apps.json")
+
+    private let lock = NSLock()
+    private var storedApps: [SlashCommandApp]
+    private var loadError: Error?
+
+    init(apps: [SlashCommandApp] = []) {
+        self.storedApps = apps
+    }
+
+    var apps: [SlashCommandApp] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedApps
+    }
+
+    func failLoading(with error: Error?) {
+        lock.lock()
+        defer { lock.unlock() }
+        loadError = error
+    }
+
+    func load() throws -> [SlashCommandApp] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let loadError {
+            throw loadError
+        }
+        return storedApps
+    }
+
+    func save(_ apps: [SlashCommandApp]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        storedApps = apps
+    }
+}
+
+/// Lets a test press keys. Keys the runtime holds back count as typed once
+/// they are released.
+@MainActor
+final class FakeKeyEventMonitor: KeyEventMonitoring {
+    /// Whether start succeeds, as it does once Accessibility is allowed.
+    var canStart = true
+    private(set) var startCount = 0
+    private(set) var releaseCount = 0
+    /// Keys held back and not released yet.
+    private(set) var heldKeys: [SlashCommandKey] = []
+    /// Keys that reached the application, in order.
+    private(set) var typedKeys: [SlashCommandKey] = []
+    private var handler: (@MainActor (SlashCommandKey) -> Bool)?
+
+    var isRunning: Bool {
+        handler != nil
+    }
+
+    @discardableResult
+    func start(_ handler: @escaping @MainActor (SlashCommandKey) -> Bool) -> Bool {
+        startCount += 1
+        guard canStart else { return false }
+        self.handler = handler
+        return true
+    }
+
+    func stop() {
+        releaseHeldKeys()
+        handler = nil
+    }
+
+    func releaseHeldKeys() {
+        releaseCount += 1
+        typedKeys += heldKeys
+        heldKeys = []
+    }
+
+    /// Presses a key the way SystemKeyEventMonitor sees it.
+    func press(_ key: SlashCommandKey) {
+        let hold = handler?(key) ?? false
+        if hold || !heldKeys.isEmpty {
+            heldKeys.append(key)
+        } else {
+            typedKeys.append(key)
+        }
+    }
+
+    func press(_ keys: [SlashCommandKey]) {
+        for key in keys {
+            press(key)
+        }
     }
 }

@@ -24,9 +24,17 @@ public protocol FieldRuleStore: Sendable {
     func save(_ rules: [FieldRule]) throws
 }
 
+/// Persistence boundary for the applications with slash commands.
+public protocol SlashCommandAppStore: Sendable {
+    var url: URL { get }
+    func load() throws -> [SlashCommandApp]
+    func save(_ apps: [SlashCommandApp]) throws
+}
+
 public typealias JSONRuleStore = JSONFileStore<AppRule>
 public typealias JSONCommandRuleStore = JSONFileStore<CommandRule>
 public typealias JSONFieldRuleStore = JSONFileStore<FieldRule>
+public typealias JSONSlashCommandAppStore = JSONFileStore<SlashCommandApp>
 
 extension JSONFileStore: RuleStore where Element == AppRule {
     public static func applicationSupportStore(
@@ -57,6 +65,17 @@ extension JSONFileStore: FieldRuleStore where Element == FieldRule {
         JSONFieldRuleStore(
             url: applicationSupportDirectory(appName: appName)
                 .appendingPathComponent("field-rules.json")
+        )
+    }
+}
+
+extension JSONFileStore: SlashCommandAppStore where Element == SlashCommandApp {
+    public static func applicationSupportStore(
+        appName: String = "MoliSwitch"
+    ) -> JSONSlashCommandAppStore {
+        JSONSlashCommandAppStore(
+            url: applicationSupportDirectory(appName: appName)
+                .appendingPathComponent("slash-command-apps.json")
         )
     }
 }

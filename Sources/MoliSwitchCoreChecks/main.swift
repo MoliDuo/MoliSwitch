@@ -19,6 +19,7 @@ struct CoreChecks {
         try testApplicationListFilterRequiresInstalledApplicationsWhenUnconfigured()
         try testFieldRuleMatchesTheSavedField()
         try testAddressBarDetectorRecognisesSafariAndChrome()
+        try testSlashCommandTrackerSwitchesForACommandAndBack()
         print("Core checks passed")
     }
 
@@ -307,6 +308,26 @@ struct CoreChecks {
         try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.google.Chrome", field: omnibox), true)
         try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.google.Chrome", field: pageSearch), false)
         try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.apple.Notes", field: safari), false)
+    }
+
+    private static func testSlashCommandTrackerSwitchesForACommandAndBack() throws {
+        let chinese = "com.apple.inputmethod.SCIM.Shuangpin"
+        let english = "com.apple.keylayout.US"
+        var tracker = SlashCommandTracker()
+
+        try expectEqual(
+            tracker.handle(.slash, currentID: chinese, englishID: english, caretAtStart: { true }),
+            .switchToEnglish(englishID: english)
+        )
+        try expectEqual(tracker.handle(.tab, currentID: english, englishID: english, caretAtStart: { nil }), .pass)
+        try expectEqual(
+            tracker.handle(.returnKey, currentID: english, englishID: english, caretAtStart: { nil }),
+            .restore(inputSourceID: chinese)
+        )
+        try expectEqual(
+            tracker.handle(.slash, currentID: chinese, englishID: english, caretAtStart: { false }),
+            .pass
+        )
     }
 
     private static func expectEqual<T: Equatable>(_ actual: T, _ expected: T) throws {

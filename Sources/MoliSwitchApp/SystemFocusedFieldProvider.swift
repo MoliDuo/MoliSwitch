@@ -79,6 +79,37 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
     }
 
     func currentField() -> FieldSignature? {
+        guard let focused = focusedElement() else {
+            return nil
+        }
+        return Self.signature(of: focused)
+    }
+
+    func isCaretAtStart() -> Bool? {
+        guard
+            let focused = focusedElement(),
+            let role = Self.string(focused, kAXRoleAttribute),
+            Self.textRoles.contains(role)
+        else {
+            return nil
+        }
+
+        if
+            let value = Self.copyAttribute(focused, kAXSelectedTextRangeAttribute),
+            CFGetTypeID(value) == AXValueGetTypeID()
+        {
+            var range = CFRange()
+            if AXValueGetValue(value as! AXValue, .cfRange, &range) {
+                return range.location == 0
+            }
+        }
+        if let count = Self.copyAttribute(focused, kAXNumberOfCharactersAttribute) as? Int {
+            return count == 0
+        }
+        return nil
+    }
+
+    private func focusedElement() -> AXUIElement? {
         guard isTrusted, let application = NSWorkspace.shared.frontmostApplication else {
             return nil
         }
@@ -89,11 +120,7 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
         } else {
             element = Self.applicationElement(application.processIdentifier)
         }
-
-        guard let focused = Self.element(element, kAXFocusedUIElementAttribute) else {
-            return nil
-        }
-        return Self.signature(of: focused)
+        return Self.element(element, kAXFocusedUIElementAttribute)
     }
 
     fileprivate func focusDidChange() {
