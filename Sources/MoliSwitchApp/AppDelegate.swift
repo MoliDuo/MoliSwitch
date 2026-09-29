@@ -274,10 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func setupStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(
-            systemSymbolName: "keyboard",
-            accessibilityDescription: Self.appName
-        )
+        item.button?.image = BrandMark.menuBarImage()
         item.button?.toolTip = Self.appName
 
         let menu = NSMenu()

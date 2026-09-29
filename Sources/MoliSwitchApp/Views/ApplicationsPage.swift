@@ -13,7 +13,7 @@ struct ApplicationsPage: View {
             Divider()
             content
         }
-        .searchable(text: $runtime.searchText, placement: .toolbar, prompt: "搜索应用或 Bundle ID")
+        .searchable(text: $runtime.searchText, placement: .toolbar, prompt: "搜索应用")
         .toolbar {
             ToolbarItem {
                 Picker("显示", selection: $runtime.applicationListScope) {

@@ -87,65 +87,15 @@ private func drawIcon(size: CGFloat, to url: URL) throws {
     )
     context.fillPath()
 
-    let keyboardRect = CGRect(
-        x: 236 * scale,
-        y: 330 * scale,
-        width: 552 * scale,
-        height: 364 * scale
-    )
+    // The mark's coordinates put y down; flip so they read the same here.
+    context.translateBy(x: 0, y: size)
+    context.scaleBy(x: 1, y: -1)
     context.setStrokeColor(NSColor.white.withAlphaComponent(0.95).cgColor)
-    context.setLineWidth(max(2, 52 * scale))
-    context.addPath(
-        CGPath(
-            roundedRect: keyboardRect,
-            cornerWidth: 72 * scale,
-            cornerHeight: 72 * scale,
-            transform: nil
-        )
+    drawMark(
+        in: CGRect(x: 232 * scale, y: 232 * scale, width: 560 * scale, height: 560 * scale),
+        lineWidth: 1.6,
+        context: context
     )
-    context.strokePath()
-
-    let keySize = 44 * scale
-    let keySpacing = 66 * scale
-    let firstX = 324 * scale
-    let firstY = 464 * scale
-    context.setFillColor(NSColor.white.withAlphaComponent(0.95).cgColor)
-
-    for row in 0..<2 {
-        for column in 0..<5 {
-            let rect = CGRect(
-                x: firstX + CGFloat(column) * keySpacing,
-                y: firstY + CGFloat(row) * keySpacing,
-                width: keySize,
-                height: keySize
-            )
-            context.addPath(
-                CGPath(
-                    roundedRect: rect,
-                    cornerWidth: 10 * scale,
-                    cornerHeight: 10 * scale,
-                    transform: nil
-                )
-            )
-            context.fillPath()
-        }
-    }
-
-    let spaceRect = CGRect(
-        x: 360 * scale,
-        y: 378 * scale,
-        width: 304 * scale,
-        height: 44 * scale
-    )
-    context.addPath(
-        CGPath(
-            roundedRect: spaceRect,
-            cornerWidth: 18 * scale,
-            cornerHeight: 18 * scale,
-            transform: nil
-        )
-    )
-    context.fillPath()
 
     guard let image = context.makeImage(),
           let destination = CGImageDestinationCreateWithURL(
@@ -161,4 +111,41 @@ private func drawIcon(size: CGFloat, to url: URL) throws {
     if !CGImageDestinationFinalize(destination) {
         throw NSError(domain: "MoliSwitchIcon", code: 3)
     }
+}
+
+/// Same shape as BrandMark.draw in Sources/MoliSwitchApp/BrandMark.swift;
+/// keep the two in step.
+private func drawMark(in rect: CGRect, lineWidth: CGFloat, context: CGContext) {
+    let gridSize: CGFloat = 18
+    let scale = rect.width / gridSize
+    context.saveGState()
+    context.translateBy(x: rect.minX, y: rect.minY)
+    context.scaleBy(x: scale, y: scale)
+    context.setLineWidth(lineWidth)
+    context.setLineCap(.round)
+    context.setLineJoin(.round)
+
+    context.addPath(
+        CGPath(
+            roundedRect: CGRect(x: 1.5, y: 1.5, width: 15, height: 15),
+            cornerWidth: 3.6,
+            cornerHeight: 3.6,
+            transform: nil
+        )
+    )
+
+    context.move(to: CGPoint(x: 5, y: 6.8))
+    context.addLine(to: CGPoint(x: 13, y: 6.8))
+    context.move(to: CGPoint(x: 11, y: 4.8))
+    context.addLine(to: CGPoint(x: 13, y: 6.8))
+    context.addLine(to: CGPoint(x: 11, y: 8.8))
+
+    context.move(to: CGPoint(x: 13, y: 11.2))
+    context.addLine(to: CGPoint(x: 5, y: 11.2))
+    context.move(to: CGPoint(x: 7, y: 9.2))
+    context.addLine(to: CGPoint(x: 5, y: 11.2))
+    context.addLine(to: CGPoint(x: 7, y: 13.2))
+
+    context.strokePath()
+    context.restoreGState()
 }
