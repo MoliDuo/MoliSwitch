@@ -122,8 +122,52 @@ struct ApplicationsPage: View {
                 .disabled(!runtime.ruleEditingEnabled)
             }
             .width(min: 180, ideal: 220, max: 280)
+
+            TableColumn("/ 命令") { application in
+                featureCheckbox(
+                    title: application.name + " 输入斜杠命令时切到英文",
+                    isOn: Binding(
+                        get: { runtime.usesSlashCommands(application) },
+                        set: { runtime.setUsesSlashCommands($0, for: application) }
+                    ),
+                    featureEnabled: runtime.slashCommandSwitchingEnabled,
+                    editingEnabled: runtime.slashCommandAppEditingEnabled,
+                    help: "在输入框开头输入 / 时切到英文"
+                )
+            }
+            .width(56)
+
+            TableColumn("⇧ 英文") { application in
+                featureCheckbox(
+                    title: application.name + " 按住 Shift 时打英文",
+                    isOn: Binding(
+                        get: { runtime.usesShiftEnglish(application) },
+                        set: { runtime.setUsesShiftEnglish($0, for: application) }
+                    ),
+                    featureEnabled: runtime.shiftEnglishEnabled,
+                    editingEnabled: runtime.shiftExcludedAppEditingEnabled,
+                    help: "按住 Shift 时打英文"
+                )
+            }
+            .width(56)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
+    }
+
+    /// Whether an application uses a feature that is turned on in 自动切换.
+    private func featureCheckbox(
+        title: String,
+        isOn: Binding<Bool>,
+        featureEnabled: Bool,
+        editingEnabled: Bool,
+        help: String
+    ) -> some View {
+        Toggle(title, isOn: isOn)
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+            .disabled(!featureEnabled || !editingEnabled)
+            .frame(maxWidth: .infinity)
+            .help(featureEnabled ? help : "在“自动切换”里打开后才能勾选")
     }
 
     @ViewBuilder
