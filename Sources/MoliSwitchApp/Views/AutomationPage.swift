@@ -74,6 +74,8 @@ struct AutomationPage: View {
     private var shiftSection: some View {
         Section {
             Toggle("按住 Shift 时打英文", isOn: $runtime.shiftEnglishEnabled)
+            Toggle("松开 Shift 后切回原输入法", isOn: $runtime.shiftRestoresOnRelease)
+                .disabled(!runtime.shiftEnglishEnabled)
             applicationCountRow(
                 count: runtime.shiftExcludedApps.apps.isEmpty
                     ? "全部"
@@ -85,7 +87,8 @@ struct AutomationPage: View {
         } footer: {
             SectionFooter(
                 "用中文输入法时，按住 Shift 打字母或符号，会先切到英文再打出来，比如 A、?、!、(。"
-                    + "松开 Shift 后切回原来的输入法。只按 Shift，或者 Shift 加回车、Tab、空格、方向键，不会切换。"
+                    + "松开 Shift 后切回原来的输入法；关掉“松开 Shift 后切回原输入法”的话，就一直用英文，要自己切回。"
+                    + "只按 Shift，或者 Shift 加回车、Tab、空格、方向键，不会切换。"
                     + "默认所有 App 都生效，不想用的 App 在“应用”里取消勾选“⇧ 英文”。"
             )
         }

@@ -17,6 +17,7 @@ final class AppRuntime: ObservableObject {
     /// milliseconds, for trying out what an application needs.
     static let slashCommandSwitchDelayKey = "slashCommandSwitchDelayMilliseconds"
     static let shiftEnglishEnabledKey = "shiftEnglishEnabled"
+    static let shiftRestoresOnReleaseKey = "shiftRestoresOnRelease"
     /// Settings picker value for "detect the input source automatically".
     static let automaticInputSourceID = ""
     /// Picker value of an application without a rule, which switches to the
@@ -146,6 +147,14 @@ final class AppRuntime: ObservableObject {
             updateKeyMonitoring()
         }
     }
+    /// Whether letting go of Shift switches back to the input source used before.
+    @Published var shiftRestoresOnRelease: Bool {
+        didSet {
+            guard shiftRestoresOnRelease != oldValue else { return }
+            defaults.set(shiftRestoresOnRelease, forKey: Self.shiftRestoresOnReleaseKey)
+            shiftTracker.restoresOnRelease = shiftRestoresOnRelease
+        }
+    }
     /// What applications without a rule switch to: noSwitchInputSourceID, a
     /// role, or an input source.
     @Published var defaultInputSourceSelection: String {
@@ -271,6 +280,9 @@ final class AppRuntime: ObservableObject {
         self.slashCommandRestoresOnSpace = restoresOnSpace
         self.slashCommandTracker = SlashCommandTracker(restoresOnSpace: restoresOnSpace)
         self.shiftEnglishEnabled = defaults.bool(forKey: Self.shiftEnglishEnabledKey)
+        let restoresOnRelease = defaults.object(forKey: Self.shiftRestoresOnReleaseKey) as? Bool ?? true
+        self.shiftRestoresOnRelease = restoresOnRelease
+        self.shiftTracker = ShiftEnglishTracker(restoresOnRelease: restoresOnRelease)
         self.accessibilityTrusted = focusedFieldProvider.isTrusted
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status

@@ -68,6 +68,23 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
     }
 
     @MainActor
+    func testStaysInEnglishWhenTurnedOff() async {
+        let fixture = makeShiftFixture()
+        fixture.runtime.shiftRestoresOnRelease = false
+        XCTAssertEqual(fixture.defaults.object(forKey: AppRuntime.shiftRestoresOnReleaseKey) as? Bool, false)
+
+        fixture.keys.press(.printable, shifted: true)
+        await waitUntil { fixture.keys.heldKeys.isEmpty }
+        fixture.keys.releaseShift()
+        fixture.keys.press(.printable)
+        try? await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
+        XCTAssertEqual(fixture.keys.typedKeys, [.printable, .printable])
+        XCTAssertEqual(fixture.runtime.switchCount, 1)
+    }
+
+    @MainActor
     func testKeysTypedWhileSwitchingBackWaitForIt() async {
         let fixture = makeShiftFixture()
         fixture.keys.press(.printable, shifted: true)

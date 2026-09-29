@@ -8,7 +8,8 @@ import Foundation
 /// input method. Nothing happens while a keyboard layout is selected, which
 /// types Shift keys itself. The input source used before is only switched back
 /// while the English one is still selected, so a switch the user made in
-/// between is kept.
+/// between is kept. When restoresOnRelease is off, the English input source
+/// stays after letting go of Shift.
 public struct ShiftEnglishTracker: Equatable, Sendable {
     public enum Decision: Equatable, Sendable {
         case pass
@@ -23,9 +24,13 @@ public struct ShiftEnglishTracker: Equatable, Sendable {
         case switched(previousID: String, englishID: String)
     }
 
+    /// Whether letting go of Shift switches back to the input source used before.
+    public var restoresOnRelease: Bool
     private var state: State = .idle
 
-    public init() {}
+    public init(restoresOnRelease: Bool = true) {
+        self.restoresOnRelease = restoresOnRelease
+    }
 
     public var isSwitched: Bool {
         state != .idle
@@ -65,6 +70,7 @@ public struct ShiftEnglishTracker: Equatable, Sendable {
     public mutating func shiftReleased(currentID: String?) -> Decision {
         guard case .switched(let previousID, let englishID) = state else { return .pass }
         state = .idle
+        guard restoresOnRelease else { return .pass }
         return currentID == englishID ? .restore(inputSourceID: previousID) : .pass
     }
 

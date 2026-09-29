@@ -58,6 +58,13 @@ final class ShiftEnglishTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.shiftReleased(currentID: english), .pass)
     }
 
+    func testStaysInEnglishWhenNotRestoringOnRelease() {
+        var tracker = ShiftEnglishTracker(restoresOnRelease: false)
+        _ = press(&tracker)
+        XCTAssertEqual(tracker.shiftReleased(currentID: english), .pass)
+        XCTAssertFalse(tracker.isSwitched)
+    }
+
     func testReleasingShiftWithoutASwitchDoesNothing() {
         var tracker = ShiftEnglishTracker()
         XCTAssertEqual(tracker.shiftReleased(currentID: chinese), .pass)
