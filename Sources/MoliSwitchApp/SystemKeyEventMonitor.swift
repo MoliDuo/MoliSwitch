@@ -98,8 +98,9 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             // Keys pressed while the tap was off were not seen.
-            Diagnostics.slash.error(
-                "key tap disabled (\(type == .tapDisabledByTimeout ? "timeout" : "user input", privacy: .public)), re-enabling"
+            Diagnostics.record(
+                .slash, .error,
+                "key tap disabled (\(type == .tapDisabledByTimeout ? "timeout" : "user input")), re-enabling"
             )
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)

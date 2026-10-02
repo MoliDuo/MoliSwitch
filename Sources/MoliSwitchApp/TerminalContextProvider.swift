@@ -141,8 +141,12 @@ private final class TerminalTabInspector: @unchecked Sendable {
         let start = ContinuousClock.now
         let result = script.executeAndReturnError(&error)
         let elapsed = Diagnostics.milliseconds(since: start)
-        Diagnostics.terminal.debug("active tab asked in \(elapsed, privacy: .public) ms")
+        Diagnostics.record(.terminal, .debug, "active tab of \(bundleIdentifier) asked in \(elapsed) ms")
         guard error == nil, let tty = result?.stringValue, tty.hasPrefix("/dev/") else {
+            Diagnostics.record(
+                .terminal, .error,
+                "active tab of \(bundleIdentifier) unavailable: \(error?[NSAppleScript.errorMessage] as? String ?? "no tty in result"), \(elapsed) ms"
+            )
             return nil
         }
         return tty

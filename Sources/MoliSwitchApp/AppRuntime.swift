@@ -17,6 +17,7 @@ final class AppRuntime: ObservableObject {
     /// milliseconds, for trying out what an application needs.
     static let slashCommandSwitchDelayKey = "slashCommandSwitchDelayMilliseconds"
     static let shiftEnglishEnabledKey = "shiftEnglishEnabled"
+    static let usageLoggingEnabledKey = "usageLoggingEnabled"
     static let shiftRestoresOnReleaseKey = "shiftRestoresOnRelease"
     static let shiftEnglishCategoriesKey = "shiftEnglishCategories"
     /// Set once the applications where Shift did not switch were carried over
@@ -77,6 +78,23 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard showMenuBarIcon != oldValue else { return }
             defaults.set(showMenuBarIcon, forKey: Self.showMenuBarIconKey)
+            logUsage("setting", ["name": "showMenuBarIcon", "value": .string("\(showMenuBarIcon)")])
+        }
+    }
+    /// Whether what happens is written to the usage log on this Mac.
+    @Published var usageLoggingEnabled: Bool {
+        didSet {
+            guard usageLoggingEnabled != oldValue else { return }
+            defaults.set(usageLoggingEnabled, forKey: Self.usageLoggingEnabledKey)
+            if usageLoggingEnabled {
+                usageLogger.isEnabled = true
+                logUsage("setting", ["name": "usageLoggingEnabled", "value": "true"])
+                logSnapshot("loggingEnabled")
+            } else {
+                logUsage("setting", ["name": "usageLoggingEnabled", "value": "false"])
+                usageLogger.flush()
+                usageLogger.isEnabled = false
+            }
         }
     }
     /// Whether command rules apply in Terminal and iTerm2.
@@ -84,6 +102,7 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard terminalSwitchingEnabled != oldValue else { return }
             defaults.set(terminalSwitchingEnabled, forKey: Self.terminalSwitchingEnabledKey)
+            logUsage("setting", ["name": "terminalSwitchingEnabled", "value": .string("\(terminalSwitchingEnabled)")])
             updateTerminalPolling(for: currentApplication)
         }
     }
@@ -93,6 +112,7 @@ final class AppRuntime: ObservableObject {
             guard chineseInputSourceSelection != oldValue else { return }
             let previous = resolveInputSource(oldValue) { detectedChineseInputSource }
             persistSelection(chineseInputSourceSelection, forKey: Self.chineseInputSourceIDKey)
+            logUsage("setting", ["name": "chineseInputSource", "value": .string(chineseInputSourceSelection)])
             adoptRole(Self.chineseRuleID, forRulesUsing: previous)
         }
     }
@@ -102,6 +122,7 @@ final class AppRuntime: ObservableObject {
             guard englishInputSourceSelection != oldValue else { return }
             let previous = resolveInputSource(oldValue) { detectedEnglishInputSource }
             persistSelection(englishInputSourceSelection, forKey: Self.englishInputSourceIDKey)
+            logUsage("setting", ["name": "englishInputSource", "value": .string(englishInputSourceSelection)])
             adoptRole(Self.englishRuleID, forRulesUsing: previous)
         }
     }
@@ -110,6 +131,7 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard addressBarSwitchingEnabled != oldValue else { return }
             defaults.set(addressBarSwitchingEnabled, forKey: Self.addressBarSwitchingEnabledKey)
+            logUsage("setting", ["name": "addressBarSwitchingEnabled", "value": .string("\(addressBarSwitchingEnabled)")])
             refreshFieldObservation()
         }
     }
@@ -118,6 +140,7 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard addressBarInputSourceSelection != oldValue else { return }
             defaults.set(addressBarInputSourceSelection, forKey: Self.addressBarInputSourceIDKey)
+            logUsage("setting", ["name": "addressBarInputSourceSelection", "value": .string("\(addressBarInputSourceSelection)")])
             refreshFieldObservation()
         }
     }
@@ -127,6 +150,7 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard slashCommandSwitchingEnabled != oldValue else { return }
             defaults.set(slashCommandSwitchingEnabled, forKey: Self.slashCommandSwitchingEnabledKey)
+            logUsage("setting", ["name": "slashCommandSwitchingEnabled", "value": .string("\(slashCommandSwitchingEnabled)")])
             updateKeyMonitoring()
             refreshFieldObservation()
         }
@@ -136,6 +160,7 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard slashCommandRestoresOnSpace != oldValue else { return }
             defaults.set(slashCommandRestoresOnSpace, forKey: Self.slashCommandRestoresOnSpaceKey)
+            logUsage("setting", ["name": "slashCommandRestoresOnSpace", "value": .string("\(slashCommandRestoresOnSpace)")])
             slashCommandTracker.restoresOnSpace = slashCommandRestoresOnSpace
         }
     }
@@ -145,6 +170,7 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard shiftEnglishEnabled != oldValue else { return }
             defaults.set(shiftEnglishEnabled, forKey: Self.shiftEnglishEnabledKey)
+            logUsage("setting", ["name": "shiftEnglishEnabled", "value": .string("\(shiftEnglishEnabled)")])
             if !shiftEnglishEnabled {
                 shiftTracker.cancel()
             }
@@ -156,6 +182,7 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard shiftRestoresOnRelease != oldValue else { return }
             defaults.set(shiftRestoresOnRelease, forKey: Self.shiftRestoresOnReleaseKey)
+            logUsage("setting", ["name": "shiftRestoresOnRelease", "value": .string("\(shiftRestoresOnRelease)")])
         }
     }
     /// The keys that switch to English with Shift held, in applications
@@ -167,6 +194,10 @@ final class AppRuntime: ObservableObject {
                 ShiftKeyCategory.allCases.filter(shiftEnglishCategories.contains).map(\.rawValue),
                 forKey: Self.shiftEnglishCategoriesKey
             )
+            logUsage(
+                "setting",
+                ["name": "shiftEnglishCategories", "value": .strings(shiftEnglishCategories.map(\.rawValue).sorted())]
+            )
         }
     }
     /// What applications without a rule switch to: noSwitchInputSourceID, a
@@ -174,6 +205,7 @@ final class AppRuntime: ObservableObject {
     @Published var defaultInputSourceSelection: String {
         didSet {
             guard defaultInputSourceSelection != oldValue else { return }
+            logUsage("setting", ["name": "defaultInputSource", "value": .string(defaultInputSourceSelection)])
             if defaultInputSourceSelection == Self.noSwitchInputSourceID {
                 defaults.removeObject(forKey: Self.defaultInputSourceIDKey)
             } else {
@@ -202,6 +234,7 @@ final class AppRuntime: ObservableObject {
     private let loginItemManager: any LoginItemManaging
     private let inputSourceIndicator: any InputSourceIndicatorControlling
     private let switchCounter: SwitchCounter
+    private let usageLogger: any UsageLogging
     private let defaults: UserDefaults
     private let ownBundleIdentifier: String?
     let updateController: UpdateController?
@@ -210,6 +243,16 @@ final class AppRuntime: ObservableObject {
     private var activationObserver: NSObjectProtocol?
     private var hasStarted = false
     private var hasStopped = false
+
+    // Bookkeeping for the usage log.
+    /// The input source this app asked for last, to tell its own switches from
+    /// the user's when the system reports a change.
+    private var pendingSelfSwitch: (id: String, mono: Double)?
+    private var lastFocusMono: Double?
+    /// The input source the system reported last.
+    private var lastObservedSourceID: String?
+    private var snapshotTask: Task<Void, Never>?
+    private var terminalUnavailableLogged = false
 
     private var terminalPollTask: Task<Void, Never>?
     private var polledApplication: RunningApplicationInfo?
@@ -257,6 +300,7 @@ final class AppRuntime: ObservableObject {
         loginItemManager: any LoginItemManaging = SystemLoginItemManager(),
         inputSourceIndicator: any InputSourceIndicatorControlling = SystemInputSourceIndicator(),
         switchCounter: SwitchCounter = SwitchCounter(),
+        usageLogger: any UsageLogging = JSONLUsageLogger(),
         defaults: UserDefaults = .standard,
         updateController: UpdateController? = nil,
         ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
@@ -279,10 +323,12 @@ final class AppRuntime: ObservableObject {
         self.loginItemManager = loginItemManager
         self.inputSourceIndicator = inputSourceIndicator
         self.switchCounter = switchCounter
+        self.usageLogger = usageLogger
         self.defaults = defaults
         self.updateController = updateController
         self.ownBundleIdentifier = ownBundleIdentifier
         self.showMenuBarIcon = defaults.object(forKey: Self.showMenuBarIconKey) as? Bool ?? true
+        self.usageLoggingEnabled = defaults.object(forKey: Self.usageLoggingEnabledKey) as? Bool ?? true
         self.terminalSwitchingEnabled = defaults.object(forKey: Self.terminalSwitchingEnabledKey) as? Bool ?? true
         self.chineseInputSourceSelection = defaults.string(forKey: Self.chineseInputSourceIDKey)
             ?? Self.automaticInputSourceID
@@ -307,6 +353,17 @@ final class AppRuntime: ObservableObject {
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
         self.inputSourceIndicatorEnabled = inputSourceIndicator.isEnabled
+
+        usageLogger.isEnabled = usageLoggingEnabled
+        // Lines of the system log, such as key decisions, go to the usage log too.
+        Diagnostics.sink = { category, level, message in
+            usageLogger.log(
+                UsageEvent(
+                    "diag",
+                    ["category": .string(category.rawValue), "level": .string(level.rawValue), "message": .string(message)]
+                )
+            )
+        }
     }
 
     // MARK: - Lifecycle
@@ -315,8 +372,12 @@ final class AppRuntime: ObservableObject {
         guard !hasStarted else { return }
         hasStarted = true
 
+        logUsage("appStart", Self.environmentFields())
         loadRulesAtStartup()
         refreshInputSources()
+        lastObservedSourceID = currentInputSource?.id
+        logSnapshot("appStart")
+        startSnapshotHeartbeat()
         reportLoginStatus()
         startMonitoring()
         updateController?.start()
@@ -328,6 +389,9 @@ final class AppRuntime: ObservableObject {
         guard !hasStopped else { return }
         hasStopped = true
 
+        logUsage("appStop")
+        snapshotTask?.cancel()
+        snapshotTask = nil
         scanTask?.cancel()
         scanTask = nil
         isScanning = false
@@ -343,6 +407,7 @@ final class AppRuntime: ObservableObject {
         updateKeyMonitoring()
         inputSourceManager.stopMonitoringSelectedSource()
         updateController?.stop()
+        usageLogger.flush()
     }
 
     // MARK: - Rules
@@ -373,6 +438,7 @@ final class AppRuntime: ObservableObject {
             ruleEditingEnabled = true
             storageStatus = reportingSuccess ? .rulesReloaded : nil
         } catch {
+            logUsage("error", ["where": "loadRules", "kind": "app", "error": .string("\(error)")])
             // Keep whatever is already in memory; never write back over a file we
             // could not read.
             ruleEditingEnabled = false
@@ -405,6 +471,7 @@ final class AppRuntime: ObservableObject {
             commandRuleEditingEnabled = true
             return true
         } catch {
+            logUsage("error", ["where": "loadRules", "kind": "command", "error": .string("\(error)")])
             commandRuleEditingEnabled = false
             return false
         }
@@ -417,6 +484,7 @@ final class AppRuntime: ObservableObject {
             fieldRuleEditingEnabled = true
             return true
         } catch {
+            logUsage("error", ["where": "loadRules", "kind": "field", "error": .string("\(error)")])
             fieldRuleEditingEnabled = false
             return false
         }
@@ -429,6 +497,7 @@ final class AppRuntime: ObservableObject {
             slashCommandAppEditingEnabled = true
             return true
         } catch {
+            logUsage("error", ["where": "loadRules", "kind": "slashApps", "error": .string("\(error)")])
             slashCommandAppEditingEnabled = false
             return false
         }
@@ -448,6 +517,7 @@ final class AppRuntime: ObservableObject {
             shiftAppRuleEditingEnabled = true
             return true
         } catch {
+            logUsage("error", ["where": "loadRules", "kind": "shift", "error": .string("\(error)")])
             shiftAppRuleEditingEnabled = false
             return false
         }
@@ -598,6 +668,16 @@ final class AppRuntime: ObservableObject {
     private func finishScan(with result: ApplicationScanResult) {
         scanTask = nil
         isScanning = false
+
+        if result.isTotalFailure || result.isPartialFailure {
+            logUsage(
+                "error",
+                [
+                    "where": "scanApplications", "total": .bool(result.isTotalFailure),
+                    "failedRoots": .strings(result.failedRoots.map(\.path)),
+                ]
+            )
+        }
 
         if result.isTotalFailure {
             // Nothing usable came back: keep the list that is already on screen.
@@ -797,7 +877,9 @@ final class AppRuntime: ObservableObject {
             try store.save(candidate.rules)
             ruleSet = candidate
             storageStatus = .rulesSaved
+            logUsage("ruleEdit", ["kind": "app", "ok": true, "count": .int(candidate.rules.count)])
         } catch {
+            logUsage("ruleEdit", ["kind": "app", "ok": false, "error": .string("\(error)")])
             storageStatus = .rulesSaveFailure
         }
     }
@@ -876,9 +958,11 @@ final class AppRuntime: ObservableObject {
             try commandStore.save(candidate.rules)
             commandRuleSet = candidate
             storageStatus = .rulesSaved
+            logUsage("ruleEdit", ["kind": "command", "ok": true, "count": .int(candidate.rules.count)])
             updateTerminalPolling(for: currentApplication)
             return true
         } catch {
+            logUsage("ruleEdit", ["kind": "command", "ok": false, "error": .string("\(error)")])
             storageStatus = .rulesSaveFailure
             return false
         }
@@ -1027,9 +1111,11 @@ final class AppRuntime: ObservableObject {
             try fieldStore.save(candidate.rules)
             fieldRuleSet = candidate
             storageStatus = .rulesSaved
+            logUsage("ruleEdit", ["kind": "field", "ok": true, "count": .int(candidate.rules.count)])
             refreshFieldObservation()
             return true
         } catch {
+            logUsage("ruleEdit", ["kind": "field", "ok": false, "error": .string("\(error)")])
             storageStatus = .rulesSaveFailure
             return false
         }
@@ -1073,9 +1159,11 @@ final class AppRuntime: ObservableObject {
             try slashCommandAppStore.save(candidate.apps)
             slashCommandApps = candidate
             storageStatus = .rulesSaved
+            logUsage("ruleEdit", ["kind": "slashApps", "ok": true, "count": .int(candidate.apps.count)])
             updateKeyMonitoring()
             refreshFieldObservation()
         } catch {
+            logUsage("ruleEdit", ["kind": "slashApps", "ok": false, "error": .string("\(error)")])
             storageStatus = .rulesSaveFailure
         }
     }
@@ -1130,7 +1218,9 @@ final class AppRuntime: ObservableObject {
             try shiftAppRuleStore.save(candidate.rules)
             shiftAppRules = candidate
             storageStatus = .rulesSaved
+            logUsage("ruleEdit", ["kind": "shift", "ok": true, "count": .int(candidate.rules.count)])
         } catch {
+            logUsage("ruleEdit", ["kind": "shift", "ok": false, "error": .string("\(error)")])
             storageStatus = .rulesSaveFailure
         }
     }
@@ -1176,7 +1266,12 @@ final class AppRuntime: ObservableObject {
     func handleKeyEvent(_ event: MonitoredKeyEvent) -> Bool {
         switch event {
         case .shiftReleased:
-            let decision = shiftTracker.shiftReleased(currentID: inputSourceManager.currentInputSource()?.id)
+            let currentID = inputSourceManager.currentInputSource()?.id
+            let decision = shiftTracker.shiftReleased(currentID: currentID)
+            logUsage(
+                "shiftRelease",
+                ["current": .optional(currentID), "decision": .string(String(describing: decision))]
+            )
             if case .restore(let previousID) = decision {
                 restoreAfterShift(previousID)
             }
@@ -1191,9 +1286,13 @@ final class AppRuntime: ObservableObject {
         // with the input source used before.
         if shiftRestoreTask != nil {
             shiftRestoreHoldsKeys = true
+            logUsage("key", Self.keyFields(key, shifted: shifted, category: category) + ["held": "shiftRestore"])
             return true
         }
-        guard let app = currentApplication else { return false }
+        guard let app = currentApplication else {
+            logUsage("key", Self.keyFields(key, shifted: shifted, category: category) + ["held": "noApp"])
+            return false
+        }
 
         let pressed = ContinuousClock.now
         let currentID = inputSourceManager.currentInputSource()?.id
@@ -1209,8 +1308,9 @@ final class AppRuntime: ObservableObject {
                 options: options ?? .off
             )
             if shiftDecision != .pass {
-                Diagnostics.shift.debug(
-                    "key \(String(describing: key), privacy: .public) (\(category?.rawValue ?? "-", privacy: .public)) in \(app.bundleIdentifier, privacy: .public) with \(currentID ?? "nil", privacy: .public): \(String(describing: shiftDecision), privacy: .public)"
+                Diagnostics.record(
+                    .shift, .debug,
+                    "key \(String(describing: key)) (\(category?.rawValue ?? "-")) in \(app.bundleIdentifier) with \(currentID ?? "nil"): \(String(describing: shiftDecision))"
                 )
             }
         }
@@ -1219,11 +1319,21 @@ final class AppRuntime: ObservableObject {
         let holdsForSlash = watchesSlashCommands(in: app)
             && handleSlashCommandKey(key, in: app, currentID: currentID, pressed: pressed)
 
+        logUsage(
+            "key",
+            Self.keyFields(key, shifted: shifted, category: category) + [
+                "current": .optional(currentID),
+                "shift": .string(String(describing: shiftDecision)),
+                "heldForSlash": .bool(holdsForSlash),
+                "slashState": .string(slashCommandTracker.stateDescription),
+            ]
+        )
+
         switch shiftDecision {
         case .pass:
             return holdsForSlash
         case .switchToEnglish(let englishID):
-            guard selectInputSourceForKeys(englishID) else {
+            guard selectInputSourceForKeys(englishID, reason: "shift") else {
                 shiftTracker.cancel()
                 return holdsForSlash
             }
@@ -1251,9 +1361,13 @@ final class AppRuntime: ObservableObject {
 
             let selectedID = self.inputSourceManager.currentInputSource()?.id
             if selectedID == englishID {
-                self.selectInputSourceForKeys(previousID)
+                self.selectInputSourceForKeys(previousID, reason: "shiftRestore")
             } else {
-                Diagnostics.shift.info("restore skipped, \(selectedID ?? "nil", privacy: .public) was selected meanwhile")
+                Diagnostics.record(.shift, .info, "restore skipped, \(selectedID ?? "nil") was selected meanwhile")
+                self.logUsage(
+                    "switchSkipped",
+                    ["reason": "shiftRestore", "wanted": .string(previousID), "selected": .optional(selectedID)]
+                )
             }
 
             if self.shiftRestoreHoldsKeys {
@@ -1273,7 +1387,7 @@ final class AppRuntime: ObservableObject {
             try? await Task.sleep(for: delay, tolerance: .milliseconds(1))
             self?.keyEventMonitor.releaseHeldKeys()
             let elapsed = Diagnostics.milliseconds(since: pressed)
-            Diagnostics.slash.debug("held keys released \(elapsed, privacy: .public) ms after the first was pressed")
+            Diagnostics.record(.slash, .debug, "held keys released \(elapsed) ms after the first was pressed")
         }
     }
 
@@ -1293,22 +1407,24 @@ final class AppRuntime: ObservableObject {
                 let start = ContinuousClock.now
                 let atStart = focusedFieldProvider.isCaretAtStart()
                 let elapsed = Diagnostics.milliseconds(since: start)
-                Diagnostics.slash.debug(
-                    "caret at start: \(String(describing: atStart), privacy: .public), \(elapsed, privacy: .public) ms"
+                Diagnostics.record(
+                    .slash, .debug,
+                    "caret at start: \(String(describing: atStart)), \(elapsed) ms"
                 )
                 return atStart
             }
         )
         let state = slashCommandTracker.stateDescription
-        Diagnostics.slash.debug(
-            "key \(String(describing: key), privacy: .public) in \(app.bundleIdentifier, privacy: .public) with \(currentID ?? "nil", privacy: .public): \(String(describing: decision), privacy: .public), now \(state, privacy: .public)"
+        Diagnostics.record(
+            .slash, .debug,
+            "key \(String(describing: key)) in \(app.bundleIdentifier) with \(currentID ?? "nil"): \(String(describing: decision)), now \(state)"
         )
 
         switch decision {
         case .pass:
             return false
         case .switchToEnglish(let englishID):
-            guard selectInputSourceForKeys(englishID) else {
+            guard selectInputSourceForKeys(englishID, reason: "slash") else {
                 slashCommandTracker.cancelCommand()
                 return false
             }
@@ -1325,12 +1441,17 @@ final class AppRuntime: ObservableObject {
                 guard let self else { return }
                 let selectedID = self.inputSourceManager.currentInputSource()?.id
                 guard selectedID == englishID else {
-                    Diagnostics.slash.info(
-                        "restore skipped, \(selectedID ?? "nil", privacy: .public) was selected meanwhile"
+                    Diagnostics.record(
+                        .slash, .info,
+                        "restore skipped, \(selectedID ?? "nil") was selected meanwhile"
+                    )
+                    self.logUsage(
+                        "switchSkipped",
+                        ["reason": "slashRestore", "wanted": .string(previousID), "selected": .optional(selectedID)]
                     )
                     return
                 }
-                self.selectInputSourceForKeys(previousID)
+                self.selectInputSourceForKeys(previousID, reason: "slashRestore")
             }
             return false
         }
@@ -1349,21 +1470,19 @@ final class AppRuntime: ObservableObject {
         let wasInCommand = slashCommandTracker.isInCommand
         let decision = slashCommandTracker.focusChanged(currentID: inputSourceManager.currentInputSource()?.id)
         if wasInCommand {
-            Diagnostics.slash.info("focus changed during a command: \(String(describing: decision), privacy: .public)")
+            Diagnostics.record(.slash, .info, "focus changed during a command: \(String(describing: decision))")
+        }
+        if wasInCommand {
+            logUsage("slashEnd", ["why": "focusChanged", "decision": .string(String(describing: decision))])
         }
         if case .restore(let previousID) = decision {
-            selectInputSourceForKeys(previousID)
+            selectInputSourceForKeys(previousID, reason: "slashRestore")
         }
     }
 
     @discardableResult
-    private func selectInputSourceForKeys(_ id: String) -> Bool {
-        let start = ContinuousClock.now
-        let selected = inputSourceManager.selectInputSource(id: id)
-        let elapsed = Diagnostics.milliseconds(since: start)
-        Diagnostics.slash.info(
-            "select \(id, privacy: .public): \(selected ? "ok" : "failed", privacy: .public), \(elapsed, privacy: .public) ms"
-        )
+    private func selectInputSourceForKeys(_ id: String, reason: String) -> Bool {
+        let selected = selectLogged(id, reason: reason, from: inputSourceManager.currentInputSource()?.id)
         guard selected else { return false }
         switchCounter.recordSwitch()
         switchCount = switchCounter.count
@@ -1668,6 +1787,16 @@ final class AppRuntime: ObservableObject {
         else {
             currentApplication = nil
             currentInputSource = inputSourceManager.currentInputSource()
+            lastFocusMono = UsageEvent.currentMonotonicMilliseconds()
+            logUsage(
+                "appFocus",
+                [
+                    "ownApp": .bool(app?.bundleIdentifier != nil && app?.bundleIdentifier == ownBundleIdentifier),
+                    "frontmost": .optional(app?.bundleIdentifier),
+                    "frontmostName": .optional(app?.localizedName),
+                    "current": .optional(currentInputSource?.id),
+                ]
+            )
             updateTerminalPolling(for: nil)
             stopFollowingFields()
             return
@@ -1700,7 +1829,21 @@ final class AppRuntime: ObservableObject {
         shiftTracker.cancel()
         followFields(of: app)
 
-        apply(activeRule(for: app))
+        let rule = activeRule(for: app)
+        lastFocusMono = UsageEvent.currentMonotonicMilliseconds()
+        logUsage(
+            "appFocus",
+            [
+                "appName": .string(app.name),
+                "current": .optional(inputSourceManager.currentInputSource()?.id),
+                "ruleKind": .optional(rule.map { Self.ruleKind(of: $0.key) }),
+                "ruleKey": .optional(rule?.key),
+                "ruleTarget": .optional(rule?.inputSourceID),
+                "terminal": Self.jsonValue(of: terminalContextInEffect),
+            ]
+        )
+        logSnapshot("appFocus")
+        apply(rule)
         updateTerminalPolling(for: app)
     }
 
@@ -1797,12 +1940,20 @@ final class AppRuntime: ObservableObject {
 
     private func switchInputSource(to rule: ActiveRule?) {
         guard let rule else {
+            logUsage("switchSkipped", ["reason": "noRule"])
             currentInputSource = inputSourceManager.currentInputSource()
             inputSourceStatus = nil
             return
         }
 
         guard let targetID = targetInputSourceID(forRuleID: rule.inputSourceID) else {
+            logUsage(
+                "switchSkipped",
+                [
+                    "reason": "targetMissing", "ruleKind": .string(Self.ruleKind(of: rule.key)),
+                    "ruleKey": .string(rule.key), "wanted": .string(rule.inputSourceID),
+                ]
+            )
             inputSourceStatus = StatusMessage(
                 text: "还没有找到" + rule.inputSourceName + "输入法，请在设置里选择。",
                 severity: .warning
@@ -1811,9 +1962,10 @@ final class AppRuntime: ObservableObject {
             return
         }
 
-        if inputSourceManager.currentInputSource()?.id != targetID {
+        let currentID = inputSourceManager.currentInputSource()?.id
+        if currentID != targetID {
             // The count only tracks input sources that were actually switched.
-            if inputSourceManager.selectInputSource(id: targetID) {
+            if selectLogged(targetID, reason: Self.ruleKind(of: rule.key), rule: rule, from: currentID) {
                 switchCounter.recordSwitch()
                 switchCount = switchCounter.count
                 inputSourceStatus = nil
@@ -1824,6 +1976,13 @@ final class AppRuntime: ObservableObject {
                 )
             }
         } else {
+            logUsage(
+                "switchSkipped",
+                [
+                    "reason": "alreadyThere", "ruleKind": .string(Self.ruleKind(of: rule.key)),
+                    "ruleKey": .string(rule.key), "current": .string(targetID),
+                ]
+            )
             inputSourceStatus = nil
         }
 
@@ -1866,6 +2025,7 @@ final class AppRuntime: ObservableObject {
     private func handleFocusedFieldChanged(_ field: FieldSignature?) {
         guard let app = fieldApplication, app == currentApplication, field != focusedField else { return }
         focusedField = field
+        logUsage("fieldFocus", ["field": Self.jsonValue(of: field)])
         endSlashCommandForFocusChange()
         reapplyIfContextChanged(for: app)
     }
@@ -1914,6 +2074,7 @@ final class AppRuntime: ObservableObject {
         let trusted = focusedFieldProvider.isTrusted
         if accessibilityTrusted != trusted {
             accessibilityTrusted = trusted
+            logUsage("accessibility", ["trusted": .bool(trusted)])
             updateKeyMonitoring()
         } else if keyMonitoringUnavailable {
             updateKeyMonitoring()
@@ -1949,12 +2110,22 @@ final class AppRuntime: ObservableObject {
     private func noteTerminalContext(_ result: TerminalContextResult) -> TerminalContextResult {
         switch result {
         case .found(let context):
+            terminalUnavailableLogged = false
             if terminalAccessDenied { terminalAccessDenied = false }
-            if lastTerminalContext != context { lastTerminalContext = context }
+            if lastTerminalContext != context {
+                lastTerminalContext = context
+                logUsage("terminal", ["result": "found", "context": Self.jsonValue(of: context)])
+            }
         case .denied:
-            if !terminalAccessDenied { terminalAccessDenied = true }
+            if !terminalAccessDenied {
+                terminalAccessDenied = true
+                logUsage("terminal", ["result": "denied"])
+            }
         case .unavailable:
-            break
+            if !terminalUnavailableLogged {
+                terminalUnavailableLogged = true
+                logUsage("terminal", ["result": "unavailable"])
+            }
         }
         return result
     }
@@ -2012,7 +2183,238 @@ final class AppRuntime: ObservableObject {
     // MARK: - Selected input source
 
     private func handleSelectedInputSourceChanged() {
-        currentInputSource = inputSourceManager.currentInputSource()
+        let previousID = lastObservedSourceID
+        let now = inputSourceManager.currentInputSource()
+        currentInputSource = now
+        lastObservedSourceID = now?.id
+        guard usageLogger.isEnabled else { return }
+
+        // The system also reports the switches this app asked for.
+        let mono = UsageEvent.currentMonotonicMilliseconds()
+        let ownSwitch = pendingSelfSwitch.map { $0.id == now?.id && mono - $0.mono < 1000 } ?? false
+        var fields: [String: JSONValue] = [
+            "from": .optional(previousID),
+            "to": .optional(now?.id),
+            "toName": .optional(now?.name),
+            "ownSwitch": .bool(ownSwitch),
+            "details": .object(inputSourceManager.currentInputSourceDetails().mapValues(JSONValue.string)),
+        ]
+        if let pendingSelfSwitch {
+            fields["sinceOwnSwitchMs"] = .double(mono - pendingSelfSwitch.mono)
+            fields["ownSwitchTarget"] = .string(pendingSelfSwitch.id)
+        }
+        logUsage("systemInputSourceChanged", fields)
+
+        guard !ownSwitch, previousID != now?.id else { return }
+        var manual = fields
+        manual["details"] = nil
+        manual["ownSwitchTarget"] = nil
+        if let lastFocusMono {
+            manual["sinceFocusMs"] = .double(mono - lastFocusMono)
+        }
+        manual["appliedRuleKey"] = .optional(appliedRuleKey)
+        logUsage("manualSwitch", manual)
+        logSnapshot("manualSwitch")
+    }
+
+    // MARK: - Usage log
+
+    /// Shows the newest day's file in Finder.
+    func revealUsageLogFolder() {
+        usageLogger.flush()
+        let directory = JSONLUsageLogger.defaultDirectory()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting(
+            [(usageLogger as? JSONLUsageLogger)?.logFiles().last ?? directory]
+        )
+    }
+
+    func clearUsageLog() {
+        (usageLogger as? JSONLUsageLogger)?.clear()
+    }
+
+    /// Writes one event. Cheap when the log is off, and never touches the disk
+    /// on the calling thread, so it is safe on the key path.
+    private func logUsage(_ name: String, _ fields: [String: JSONValue] = [:]) {
+        guard usageLogger.isEnabled else { return }
+        var fields = fields
+        if fields["app"] == nil {
+            fields["app"] = .optional(currentApplication?.bundleIdentifier)
+        }
+        usageLogger.log(UsageEvent(name, fields))
+    }
+
+    /// Everything that decides what happens next, so a log shows the state at
+    /// that moment and not only the decisions.
+    private func logSnapshot(_ reason: String) {
+        guard usageLogger.isEnabled else { return }
+
+        let current = inputSourceManager.currentInputSource()
+        let options = globalShiftOptions
+        logUsage(
+            "snapshot",
+            [
+                "reason": .string(reason),
+                "appName": .optional(currentApplication?.name),
+                "current": .optional(current?.id),
+                "currentName": .optional(current?.name),
+                "details": .object(inputSourceManager.currentInputSourceDetails().mapValues(JSONValue.string)),
+                "enabledSources": .strings(inputSources.map(\.id)),
+                "chinese": .optional(effectiveChineseInputSource?.id),
+                "english": .optional(effectiveEnglishInputSource?.id),
+                "status": .optional(inputSourceStatus?.text),
+                "appliedRuleKey": .optional(appliedRuleKey),
+                "focusedField": Self.jsonValue(of: focusedField),
+                "fieldRestore": .optional(fieldRestore.map { ($0.previousID) + ">" + ($0.fieldID ?? "?") }),
+                "terminal": Self.jsonValue(of: terminalContextInEffect),
+                "terminalAccessDenied": .bool(terminalAccessDenied),
+                "slashState": .string(slashCommandTracker.stateDescription),
+                "shiftSwitched": .bool(shiftTracker.isSwitched),
+                "accessibility": .bool(accessibilityTrusted),
+                "keyMonitorRunning": .bool(keyEventMonitor.isRunning),
+                "keyMonitoringUnavailable": .bool(keyMonitoringUnavailable),
+                "caretIndicator": .bool(inputSourceIndicatorEnabled),
+                "switchCount": .int(switchCount),
+                "settings": .object([
+                    "shiftEnabled": .bool(shiftEnglishEnabled),
+                    "shiftCategories": .strings(options.categories.map(\.rawValue).sorted()),
+                    "shiftRestores": .bool(options.restoresOnRelease),
+                    "slashEnabled": .bool(slashCommandSwitchingEnabled),
+                    "slashRestoresOnSpace": .bool(slashCommandRestoresOnSpace),
+                    "slashDelayMs": .double(Self.milliseconds(of: effectiveSlashCommandSwitchDelay)),
+                    "terminalEnabled": .bool(terminalSwitchingEnabled),
+                    "terminalPollSeconds": .double(terminalPollInterval),
+                    "addressBarEnabled": .bool(addressBarSwitchingEnabled),
+                    "addressBarTarget": .string(addressBarInputSourceSelection),
+                    "defaultTarget": .string(defaultInputSourceSelection),
+                    "appRules": .int(ruleSet.rules.count),
+                    "commandRules": .int(commandRuleSet.rules.count),
+                    "fieldRules": .int(fieldRuleSet.rules.count),
+                    "slashApps": .int(slashCommandApps.apps.count),
+                    "shiftAppRules": .int(shiftAppRules.rules.count),
+                ]),
+            ]
+        )
+    }
+
+    private func startSnapshotHeartbeat() {
+        snapshotTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled, let self else { return }
+                self.logSnapshot("heartbeat")
+            }
+        }
+    }
+
+    /// Selects an input source and records what came of it: how long it took,
+    /// why it failed, and what the system says shortly after.
+    private func selectLogged(_ id: String, reason: String, rule: ActiveRule? = nil, from: String?) -> Bool {
+        let start = ContinuousClock.now
+        pendingSelfSwitch = (id, UsageEvent.currentMonotonicMilliseconds())
+        let selected = inputSourceManager.selectInputSource(id: id)
+        let elapsed = Diagnostics.milliseconds(since: start)
+        Diagnostics.record(.slash, .info, "select \(id): \(selected ? "ok" : "failed"), \(elapsed) ms")
+
+        var fields: [String: JSONValue] = [
+            "reason": .string(reason),
+            "from": .optional(from),
+            "to": .string(id),
+            "ok": .bool(selected),
+            "ms": .double(Double(elapsed) ?? 0),
+        ]
+        if let rule {
+            fields["ruleKind"] = .string(Self.ruleKind(of: rule.key))
+            fields["ruleKey"] = .string(rule.key)
+        }
+        if !selected {
+            pendingSelfSwitch = nil
+            fields["failure"] = .optional(inputSourceManager.lastSelectionFailure)
+        }
+        logUsage("switch", fields)
+
+        if selected {
+            scheduleSwitchVerification(target: id)
+        } else {
+            logSnapshot("switchFailed")
+        }
+        return selected
+    }
+
+    /// Reads the input source back after a switch: a different answer means
+    /// the system or the input method changed it again.
+    private func scheduleSwitchVerification(target: String) {
+        guard usageLogger.isEnabled else { return }
+        for delay in [50, 300] {
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard let self else { return }
+                let actual = self.inputSourceManager.currentInputSource()?.id
+                self.logUsage(
+                    "switchVerify",
+                    [
+                        "target": .string(target), "actual": .optional(actual),
+                        "match": .bool(actual == target), "afterMs": .int(delay),
+                    ]
+                )
+            }
+        }
+    }
+
+    /// command, field, addressbar, app, default or restore.
+    private static func ruleKind(of key: String) -> String {
+        key.split(separator: ":", maxSplits: 1).first.map(String.init) ?? key
+    }
+
+    private static func milliseconds(of duration: Duration) -> Double {
+        let parts = duration.components
+        return Double(parts.seconds) * 1000 + Double(parts.attoseconds) / 1e15
+    }
+
+    private static func keyFields(
+        _ key: SlashCommandKey,
+        shifted: Bool,
+        category: ShiftKeyCategory?
+    ) -> [String: JSONValue] {
+        [
+            "key": .string(String(describing: key)),
+            "shifted": .bool(shifted),
+            "category": .optional(category?.rawValue),
+        ]
+    }
+
+    private static func jsonValue(of field: FieldSignature?) -> JSONValue {
+        guard let field else { return .null }
+        return .object([
+            "role": .string(field.role),
+            "subrole": .optional(field.subrole),
+            "identifier": .optional(field.identifier),
+            "descriptor": .optional(field.descriptor),
+            "ancestors": .strings(field.ancestorRoles),
+            "web": .bool(field.isInWebArea),
+        ])
+    }
+
+    private static func jsonValue(of context: TerminalContext?) -> JSONValue {
+        guard let context else { return .null }
+        return .object(["tty": .string(context.tty), "candidates": .strings(context.candidates)])
+    }
+
+    private static func environmentFields() -> [String: JSONValue] {
+        let info = Bundle.main.infoDictionary
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        var model = [CChar](repeating: 0, count: max(size, 1))
+        sysctlbyname("hw.model", &model, &size, nil, 0)
+        return [
+            "version": .optional(info?["CFBundleShortVersionString"] as? String),
+            "build": .optional(info?["CFBundleVersion"] as? String),
+            "macOS": .string(ProcessInfo.processInfo.operatingSystemVersionString),
+            "hardware": .string(String(cString: model)),
+            "locale": .string(Locale.current.identifier),
+            "languages": .strings(Locale.preferredLanguages),
+            "timeZone": .string(TimeZone.current.identifier),
+        ]
     }
 
     /// Picker entries for a settings choice, keeping a saved choice that is no
@@ -2027,4 +2429,8 @@ final class AppRuntime: ObservableObject {
         }
         return choices
     }
+}
+
+private func + (lhs: [String: JSONValue], rhs: [String: JSONValue]) -> [String: JSONValue] {
+    lhs.merging(rhs) { _, new in new }
 }

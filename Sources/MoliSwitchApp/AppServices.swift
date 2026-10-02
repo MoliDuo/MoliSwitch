@@ -8,12 +8,22 @@ protocol InputSourceManaging: AnyObject {
     func availableInputSources() -> [InputSource]
     func invalidateCache()
     func currentInputSource() -> InputSource?
+    /// What the system says about the current input source, for the usage log:
+    /// its type, input mode, whether it types ASCII and its languages.
+    func currentInputSourceDetails() -> [String: String]
     func selectInputSource(id: String) -> Bool
+    /// Why the last selectInputSource(id:) failed, when it did.
+    var lastSelectionFailure: String? { get }
     func startMonitoringEnabledSources(_ handler: @escaping @MainActor () -> Void)
     func stopMonitoringEnabledSources()
     /// Called whenever the selected input source changes, whoever changed it.
     func startMonitoringSelectedSource(_ handler: @escaping @MainActor () -> Void)
     func stopMonitoringSelectedSource()
+}
+
+extension InputSourceManaging {
+    func currentInputSourceDetails() -> [String: String] { [:] }
+    var lastSelectionFailure: String? { nil }
 }
 
 /// The system bubble that shows the input source next to the caret after it

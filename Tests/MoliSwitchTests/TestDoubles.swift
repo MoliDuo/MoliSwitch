@@ -558,3 +558,30 @@ final class FakeKeyEventMonitor: KeyEventMonitoring {
         _ = handler?(.shiftReleased)
     }
 }
+
+// MARK: - Usage log
+
+/// Collects the events of the usage log in memory.
+final class FakeUsageLogger: UsageLogging, @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [UsageEvent] = []
+    private var enabled = true
+
+    var isEnabled: Bool {
+        get { lock.withLock { enabled } }
+        set { lock.withLock { enabled = newValue } }
+    }
+
+    var events: [UsageEvent] { lock.withLock { stored } }
+
+    func events(named name: String) -> [UsageEvent] {
+        events.filter { $0.name == name }
+    }
+
+    func log(_ event: UsageEvent) {
+        guard isEnabled else { return }
+        lock.withLock { stored.append(event) }
+    }
+
+    func flush() {}
+}

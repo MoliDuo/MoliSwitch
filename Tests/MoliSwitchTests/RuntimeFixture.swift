@@ -38,6 +38,7 @@ struct RuntimeFixture {
     let scanner: FakeApplicationScanner
     let loginItems: FakeLoginItemManager
     let indicator: FakeInputSourceIndicator
+    let usage: FakeUsageLogger
     let defaults: UserDefaults
     let suiteName: String
 }
@@ -84,6 +85,7 @@ func makeFixture(
     )
     let loginItems = FakeLoginItemManager()
     let indicator = FakeInputSourceIndicator()
+    let usage = FakeUsageLogger()
 
     let runtime = AppRuntime(
         store: store,
@@ -104,6 +106,7 @@ func makeFixture(
         loginItemManager: loginItems,
         inputSourceIndicator: indicator,
         switchCounter: SwitchCounter(defaults: defaults),
+        usageLogger: usage,
         defaults: defaults,
         updateController: nil,
         ownBundleIdentifier: "com.moli.MoliSwitch"
@@ -130,6 +133,7 @@ func makeFixture(
         scanner: scanner,
         loginItems: loginItems,
         indicator: indicator,
+        usage: usage,
         defaults: defaults,
         suiteName: suiteName
     )

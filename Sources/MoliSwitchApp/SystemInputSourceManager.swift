@@ -119,23 +119,67 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
         return InputSource(id: id, name: name)
     }
 
+    func currentInputSourceDetails() -> [String: String] {
+        let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        var details: [String: String] = [:]
+        let strings: [(String, CFString)] = [
+            ("type", kTISPropertyInputSourceType),
+            ("category", kTISPropertyInputSourceCategory),
+            ("inputModeID", kTISPropertyInputModeID),
+            ("bundleID", kTISPropertyBundleID),
+        ]
+        for (name, key) in strings {
+            if let value = stringProperty(source, key) {
+                details[name] = value
+            }
+        }
+        let flags: [(String, CFString)] = [
+            ("asciiCapable", kTISPropertyInputSourceIsASCIICapable),
+            ("enabled", kTISPropertyInputSourceIsEnabled),
+            ("selected", kTISPropertyInputSourceIsSelected),
+        ]
+        for (name, key) in flags {
+            if let raw = TISGetInputSourceProperty(source, key) {
+                let value = Unmanaged<CFBoolean>.fromOpaque(raw).takeUnretainedValue()
+                details[name] = CFBooleanGetValue(value) ? "true" : "false"
+            }
+        }
+        if let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) {
+            let languages = Unmanaged<CFArray>.fromOpaque(raw).takeUnretainedValue() as? [String]
+            if let languages {
+                details["languages"] = languages.joined(separator: ",")
+            }
+        }
+        return details
+    }
+
     func selectInputSource(id: String) -> Bool {
         guard let source = inputSource(matching: id) else {
+            lastSelectionFailure = "no input source with this id"
             return false
         }
 
-        guard TISSelectInputSource(source) == noErr else {
+        let status = TISSelectInputSource(source)
+        guard status == noErr else {
             // The cached source may be stale.
             sourcesByID[id] = nil
+            lastSelectionFailure = "TISSelectInputSource returned \(status)"
             return false
         }
+        lastSelectionFailure = nil
 
         // Some input methods accept the call without becoming current, for
         // example while they are being disabled. On this machine the switch to
         // third-party input methods (豆包) took effect for the frontmost text
         // field as well, so no retry is attempted; a mismatch is reported.
-        return currentInputSource()?.id == id
+        let current = currentInputSource()?.id
+        if current != id {
+            lastSelectionFailure = "selected, but the current input source is \(current ?? "nil")"
+        }
+        return current == id
     }
+
+    private(set) var lastSelectionFailure: String?
 
     private func computeAvailableInputSources() -> [InputSource] {
         let filters: [String: Any] = [
