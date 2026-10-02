@@ -31,10 +31,18 @@ public protocol SlashCommandAppStore: Sendable {
     func save(_ apps: [SlashCommandApp]) throws
 }
 
+/// Persistence boundary for the applications with their own Shift settings.
+public protocol ShiftAppRuleStore: Sendable {
+    var url: URL { get }
+    func load() throws -> [ShiftAppRule]
+    func save(_ rules: [ShiftAppRule]) throws
+}
+
 public typealias JSONRuleStore = JSONFileStore<AppRule>
 public typealias JSONCommandRuleStore = JSONFileStore<CommandRule>
 public typealias JSONFieldRuleStore = JSONFileStore<FieldRule>
 public typealias JSONSlashCommandAppStore = JSONFileStore<SlashCommandApp>
+public typealias JSONShiftAppRuleStore = JSONFileStore<ShiftAppRule>
 
 extension JSONFileStore: RuleStore where Element == AppRule {
     public static func applicationSupportStore(
@@ -71,7 +79,8 @@ extension JSONFileStore: FieldRuleStore where Element == FieldRule {
 
 extension JSONFileStore: SlashCommandAppStore where Element == SlashCommandApp {
     /// Also keeps other lists of applications, such as the ones where Shift
-    /// does not switch, under another file name.
+    /// did not switch before it had settings per application, under another
+    /// file name.
     public static func applicationSupportStore(
         appName: String = "MoliSwitch",
         fileName: String = "slash-command-apps.json"
@@ -79,6 +88,17 @@ extension JSONFileStore: SlashCommandAppStore where Element == SlashCommandApp {
         JSONSlashCommandAppStore(
             url: applicationSupportDirectory(appName: appName)
                 .appendingPathComponent(fileName)
+        )
+    }
+}
+
+extension JSONFileStore: ShiftAppRuleStore where Element == ShiftAppRule {
+    public static func applicationSupportStore(
+        appName: String = "MoliSwitch"
+    ) -> JSONShiftAppRuleStore {
+        JSONShiftAppRuleStore(
+            url: applicationSupportDirectory(appName: appName)
+                .appendingPathComponent("shift-app-rules.json")
         )
     }
 }

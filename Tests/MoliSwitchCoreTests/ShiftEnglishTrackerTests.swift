@@ -10,11 +10,12 @@ final class ShiftEnglishTrackerTests: XCTestCase {
 
     private func press(
         _ tracker: inout ShiftEnglishTracker,
-        _ key: SlashCommandKey = .printable,
+        _ category: ShiftKeyCategory? = .letter,
         shifted: Bool = true,
-        current: String? = nil
+        current: String? = nil,
+        options: ShiftEnglishOptions = .all
     ) -> ShiftEnglishTracker.Decision {
-        tracker.handle(key, shifted: shifted, currentID: current ?? chinese, englishID: english)
+        tracker.handle(category, shifted: shifted, currentID: current ?? chinese, englishID: english, options: options)
     }
 
     func testShiftedCharacterSwitchesToEnglish() {
@@ -39,15 +40,46 @@ final class ShiftEnglishTrackerTests: XCTestCase {
         XCTAssertFalse(tracker.isSwitched)
 
         var withoutEnglish = ShiftEnglishTracker()
-        XCTAssertEqual(withoutEnglish.handle(.printable, shifted: true, currentID: chinese, englishID: nil), .pass)
+        XCTAssertEqual(
+            withoutEnglish.handle(.letter, shifted: true, currentID: chinese, englishID: nil, options: .all),
+            .pass
+        )
     }
 
     func testShiftWithKeysThatTypeNoCharacterDoesNothing() {
-        for key: SlashCommandKey in [.returnKey, .tab, .space, .backspace, .escape, .other] {
+        var tracker = ShiftEnglishTracker()
+        XCTAssertEqual(press(&tracker, nil), .pass)
+        XCTAssertFalse(tracker.isSwitched)
+    }
+
+    func testEveryCategorySwitchesWhenChosen() {
+        for category in ShiftKeyCategory.allCases {
             var tracker = ShiftEnglishTracker()
-            XCTAssertEqual(press(&tracker, key), .pass, "\(key)")
-            XCTAssertFalse(tracker.isSwitched)
+            XCTAssertEqual(press(&tracker, category), .switchToEnglish(englishID: english), "\(category)")
         }
+    }
+
+    func testCategoriesNotChosenAreLeftAlone() {
+        let lettersOnly = ShiftEnglishOptions(categories: [.letter], restoresOnRelease: true)
+        var tracker = ShiftEnglishTracker()
+
+        XCTAssertEqual(press(&tracker, .digit, options: lettersOnly), .pass)
+        XCTAssertEqual(press(&tracker, .symbol, options: lettersOnly), .pass)
+        XCTAssertFalse(tracker.isSwitched)
+
+        // A chosen key later in the same Shift switches.
+        XCTAssertEqual(press(&tracker, .letter, options: lettersOnly), .switchToEnglish(englishID: english))
+        // After that every key is typed in English until Shift is let go.
+        XCTAssertEqual(press(&tracker, .digit, current: english, options: lettersOnly), .pass)
+        XCTAssertTrue(tracker.isSwitched)
+    }
+
+    func testNothingSwitchesWhenOff() {
+        var tracker = ShiftEnglishTracker()
+        for category in ShiftKeyCategory.allCases {
+            XCTAssertEqual(press(&tracker, category, options: .off), .pass)
+        }
+        XCTAssertFalse(tracker.isSwitched)
     }
 
     func testReleasingShiftSwitchesBack() {
@@ -59,10 +91,14 @@ final class ShiftEnglishTrackerTests: XCTestCase {
     }
 
     func testStaysInEnglishWhenNotRestoringOnRelease() {
-        var tracker = ShiftEnglishTracker(restoresOnRelease: false)
-        _ = press(&tracker)
+        var tracker = ShiftEnglishTracker()
+        _ = press(&tracker, options: ShiftEnglishOptions(categories: [.letter], restoresOnRelease: false))
         XCTAssertEqual(tracker.shiftReleased(currentID: english), .pass)
         XCTAssertFalse(tracker.isSwitched)
+
+        // The next switch follows its own options.
+        _ = press(&tracker)
+        XCTAssertEqual(tracker.shiftReleased(currentID: english), .restore(inputSourceID: chinese))
     }
 
     func testReleasingShiftWithoutASwitchDoesNothing() {

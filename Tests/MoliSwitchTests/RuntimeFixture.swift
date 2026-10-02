@@ -29,6 +29,7 @@ struct RuntimeFixture {
     let commandStore: FakeCommandRuleStore
     let fieldStore: FakeFieldRuleStore
     let slashCommandAppStore: FakeSlashCommandAppStore
+    let shiftAppRuleStore: FakeShiftAppRuleStore
     let shiftExcludedAppStore: FakeSlashCommandAppStore
     let keys: FakeKeyEventMonitor
     let fields: FakeFocusedFieldProvider
@@ -47,7 +48,9 @@ func makeFixture(
     commandRules: [CommandRule] = [],
     fieldRules: [FieldRule] = [],
     slashCommandApps: [SlashCommandApp] = [],
+    shiftAppRules: [ShiftAppRule] = [],
     shiftExcludedApps: [SlashCommandApp] = [],
+    defaultsValues: [String: Any] = [:],
     installedApplications: [InstalledApplication] = [],
     sources: [InputSource] = TestInputSources.all,
     current: InputSource? = TestInputSources.us,
@@ -57,11 +60,15 @@ func makeFixture(
     let suiteName = "MoliSwitchTests." + UUID().uuidString
     let defaults = UserDefaults(suiteName: suiteName) ?? .standard
     defaults.removePersistentDomain(forName: suiteName)
+    for (key, value) in defaultsValues {
+        defaults.set(value, forKey: key)
+    }
 
     let store = FakeRuleStore(rules: rules)
     let commandStore = FakeCommandRuleStore(rules: commandRules)
     let fieldStore = FakeFieldRuleStore(rules: fieldRules)
     let slashCommandAppStore = FakeSlashCommandAppStore(apps: slashCommandApps)
+    let shiftAppRuleStore = FakeShiftAppRuleStore(rules: shiftAppRules)
     let shiftExcludedAppStore = FakeSlashCommandAppStore(apps: shiftExcludedApps, fileName: "shift-excluded-apps.json")
     let keys = FakeKeyEventMonitor()
     let fields = FakeFocusedFieldProvider()
@@ -83,6 +90,7 @@ func makeFixture(
         commandStore: commandStore,
         fieldStore: fieldStore,
         slashCommandAppStore: slashCommandAppStore,
+        shiftAppRuleStore: shiftAppRuleStore,
         shiftExcludedAppStore: shiftExcludedAppStore,
         keyEventMonitor: keys,
         slashCommandSwitchDelay: .zero,
@@ -113,6 +121,7 @@ func makeFixture(
         commandStore: commandStore,
         fieldStore: fieldStore,
         slashCommandAppStore: slashCommandAppStore,
+        shiftAppRuleStore: shiftAppRuleStore,
         shiftExcludedAppStore: shiftExcludedAppStore,
         keys: keys,
         fields: fields,

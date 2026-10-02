@@ -11,8 +11,14 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
 
     /// Shift is turned on, Shuangpin is selected and Notes is in front.
     @MainActor
-    private func makeShiftFixture(excluded: [RunningApplicationInfo] = []) -> RuntimeFixture {
+    private func makeShiftFixture(
+        rules: [(RunningApplicationInfo, ShiftEnglishOptions)] = [],
+        excluded: [RunningApplicationInfo] = []
+    ) -> RuntimeFixture {
         let fixture = makeFixture(
+            shiftAppRules: rules.map {
+                ShiftAppRule(bundleIdentifier: $0.0.bundleIdentifier, applicationName: $0.0.name, options: $0.1)
+            },
             shiftExcludedApps: excluded.map {
                 SlashCommandApp(bundleIdentifier: $0.bundleIdentifier, applicationName: $0.name)
             },
@@ -125,8 +131,29 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
     }
 
     @MainActor
-    func testExcludedApplicationIsLeftAlone() {
-        let fixture = makeShiftFixture(excluded: [notes])
+    func testCategoriesNotChosenAreLeftAlone() async {
+        let fixture = makeShiftFixture()
+        fixture.runtime.shiftEnglishCategories = [.letter]
+        XCTAssertEqual(fixture.defaults.stringArray(forKey: AppRuntime.shiftEnglishCategoriesKey), ["letter"])
+
+        fixture.keys.press(.printable, shifted: true, category: .digit)
+        XCTAssertEqual(fixture.keys.typedKeys, [.printable])
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
+
+        fixture.keys.press(.printable, shifted: true, category: .letter)
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
+    }
+
+    @MainActor
+    func testCategoriesAreReadFromDefaults() {
+        let fixture = makeFixture(defaultsValues: [AppRuntime.shiftEnglishCategoriesKey: ["digit", "symbol"]])
+        XCTAssertEqual(fixture.runtime.shiftEnglishCategories, [.digit, .symbol])
+        XCTAssertEqual(makeFixture().runtime.shiftEnglishCategories, Set(ShiftKeyCategory.allCases))
+    }
+
+    @MainActor
+    func testApplicationTurnedOffIsLeftAlone() {
+        let fixture = makeShiftFixture(rules: [(notes, .off)])
 
         fixture.keys.press(.printable, shifted: true)
 
@@ -135,32 +162,69 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
     }
 
     @MainActor
-    func testExcludingAndIncludingApplications() {
+    func testApplicationRuleReplacesTheGlobalSettings() async {
+        let digitsStay = ShiftEnglishOptions(categories: [.digit], restoresOnRelease: false)
+        let fixture = makeShiftFixture(rules: [(notes, digitsStay)])
+
+        fixture.keys.press(.printable, shifted: true, category: .letter)
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
+
+        fixture.keys.press(.printable, shifted: true, category: .digit)
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
+        await waitUntil { fixture.keys.heldKeys.isEmpty }
+
+        // The rule does not switch back, although the global setting does.
+        fixture.keys.releaseShift()
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
+    }
+
+    @MainActor
+    func testSettingAndClearingApplicationRules() {
         let fixture = makeShiftFixture()
         let application = makeInstalledApplication("Photoshop", photoshop.bundleIdentifier)
-        XCTAssertTrue(fixture.runtime.usesShiftEnglish(application))
+        XCTAssertNil(fixture.runtime.shiftOptions(for: application))
 
-        fixture.runtime.setUsesShiftEnglish(false, for: application)
-        XCTAssertFalse(fixture.runtime.usesShiftEnglish(application))
-        XCTAssertEqual(fixture.shiftExcludedAppStore.apps.map(\.bundleIdentifier), [photoshop.bundleIdentifier])
+        fixture.runtime.setShiftOptions(.off, for: application)
+        XCTAssertEqual(fixture.runtime.shiftOptions(for: application), .off)
+        XCTAssertEqual(fixture.shiftAppRuleStore.rules.map(\.bundleIdentifier), [photoshop.bundleIdentifier])
 
         fixture.runtime.applyRuleIfNeeded(for: photoshop)
         fixture.keys.press(.printable, shifted: true)
         XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
 
-        fixture.runtime.setUsesShiftEnglish(true, for: application)
-        XCTAssertTrue(fixture.shiftExcludedAppStore.apps.isEmpty)
+        fixture.runtime.setShiftOptions(nil, for: application)
+        XCTAssertNil(fixture.runtime.shiftOptions(for: application))
+        XCTAssertTrue(fixture.shiftAppRuleStore.rules.isEmpty)
     }
 
     @MainActor
-    func testExcludedApplicationsCountAsConfigured() {
-        let fixture = makeShiftFixture(excluded: [photoshop])
+    func testApplicationsWithRulesCountAsConfigured() {
+        let fixture = makeShiftFixture(rules: [(photoshop, .all)])
         fixture.runtime.applicationListScope = .configured
 
         XCTAssertEqual(
             fixture.runtime.filteredInstalledApplications.map(\.bundleIdentifier),
             [photoshop.bundleIdentifier]
         )
+    }
+
+    @MainActor
+    func testExcludedApplicationsAreCarriedOverOnce() {
+        let fixture = makeShiftFixture(excluded: [notes])
+
+        XCTAssertEqual(fixture.shiftAppRuleStore.rules.map(\.bundleIdentifier), [notes.bundleIdentifier])
+        XCTAssertEqual(fixture.shiftAppRuleStore.rules.first?.options, .off)
+        XCTAssertTrue(fixture.defaults.bool(forKey: AppRuntime.shiftExcludedAppsMigratedKey))
+        XCTAssertEqual(fixture.shiftExcludedAppStore.apps.map(\.bundleIdentifier), [notes.bundleIdentifier])
+
+        fixture.keys.press(.printable, shifted: true)
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
+
+        // Turning Shift back on in Notes is not undone by the next load.
+        fixture.runtime.setShiftOptions(nil, for: makeInstalledApplication("Notes", notes.bundleIdentifier))
+        fixture.runtime.reloadRulesFromDisk()
+        XCTAssertTrue(fixture.runtime.shiftAppRules.rules.isEmpty)
     }
 
     @MainActor
@@ -175,16 +239,31 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
     }
 
     @MainActor
-    func testUnreadableListPausesEditing() {
+    func testUnreadableRulesPauseEditing() {
         let fixture = makeFixture()
-        fixture.shiftExcludedAppStore.failLoading(with: FakeRuleStore.Failure(message: "broken"))
+        fixture.shiftAppRuleStore.failLoading(with: FakeRuleStore.Failure(message: "broken"))
         fixture.runtime.reloadRulesFromDisk()
 
-        XCTAssertFalse(fixture.runtime.shiftExcludedAppEditingEnabled)
+        XCTAssertFalse(fixture.runtime.shiftAppRuleEditingEnabled)
         XCTAssertTrue(fixture.runtime.hasStorageFailure)
-        XCTAssertEqual(fixture.runtime.storageStatus, .shiftExcludedAppsReadFailure)
+        XCTAssertEqual(fixture.runtime.storageStatus, .shiftAppRulesReadFailure)
 
-        fixture.runtime.setUsesShiftEnglish(false, for: makeInstalledApplication("Notes", notes.bundleIdentifier))
-        XCTAssertTrue(fixture.shiftExcludedAppStore.apps.isEmpty)
+        fixture.runtime.setShiftOptions(.off, for: makeInstalledApplication("Notes", notes.bundleIdentifier))
+        XCTAssertTrue(fixture.shiftAppRuleStore.rules.isEmpty)
+    }
+
+    @MainActor
+    func testUnreadableOldListIsTriedAgainLater() {
+        let fixture = makeFixture()
+        XCTAssertTrue(fixture.defaults.bool(forKey: AppRuntime.shiftExcludedAppsMigratedKey))
+
+        let broken = makeFixture(shiftExcludedApps: [SlashCommandApp(bundleIdentifier: notes.bundleIdentifier, applicationName: "Notes")])
+        broken.defaults.removeObject(forKey: AppRuntime.shiftExcludedAppsMigratedKey)
+        broken.runtime.setShiftOptions(nil, for: makeInstalledApplication("Notes", notes.bundleIdentifier))
+        broken.shiftExcludedAppStore.failLoading(with: FakeRuleStore.Failure(message: "broken"))
+        broken.runtime.reloadRulesFromDisk()
+
+        XCTAssertTrue(broken.runtime.shiftAppRuleEditingEnabled)
+        XCTAssertFalse(broken.defaults.bool(forKey: AppRuntime.shiftExcludedAppsMigratedKey))
     }
 }

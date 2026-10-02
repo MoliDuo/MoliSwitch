@@ -42,8 +42,8 @@ struct StatusMessage: Equatable, Sendable {
         severity: .error
     )
 
-    static let shiftExcludedAppsReadFailure = StatusMessage(
-        text: "Shift 不切换的 App 名单读取失败，已暂停编辑；原文件未修改。",
+    static let shiftAppRulesReadFailure = StatusMessage(
+        text: "Shift 的 App 单独设置读取失败，已暂停编辑；原文件未修改。",
         severity: .error
     )
 

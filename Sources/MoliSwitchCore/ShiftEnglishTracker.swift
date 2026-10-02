@@ -3,12 +3,15 @@ import Foundation
 /// Decides when a character typed with Shift held switches to the English
 /// input source, and when letting go of Shift switches back.
 ///
-/// Only keys that type a character count: Shift with Return, Tab, space or an
-/// arrow, and Shift pressed on its own, are left to the application and the
-/// input method. Nothing happens while a keyboard layout is selected, which
-/// types Shift keys itself. The input source used before is only switched back
-/// while the English one is still selected, so a switch the user made in
-/// between is kept. When restoresOnRelease is off, the English input source
+/// Only keys that type a character count, and only the categories of keys the
+/// options say: Shift with Return, Tab, space or an arrow, and Shift pressed
+/// on its own, are left to the application and the input method. The first
+/// key of a category that switches does so; after that every key typed until
+/// Shift is let go is typed with the English input source. Nothing happens
+/// while a keyboard layout is selected, which types Shift keys itself. The
+/// input source used before is only switched back while the English one is
+/// still selected, so a switch the user made in between is kept. When the
+/// options at the switch had restoresOnRelease off, the English input source
 /// stays after letting go of Shift.
 public struct ShiftEnglishTracker: Equatable, Sendable {
     public enum Decision: Equatable, Sendable {
@@ -21,30 +24,30 @@ public struct ShiftEnglishTracker: Equatable, Sendable {
 
     private enum State: Equatable, Sendable {
         case idle
-        case switched(previousID: String, englishID: String)
+        case switched(previousID: String, englishID: String, restoresOnRelease: Bool)
     }
 
-    /// Whether letting go of Shift switches back to the input source used before.
-    public var restoresOnRelease: Bool
     private var state: State = .idle
 
-    public init(restoresOnRelease: Bool = true) {
-        self.restoresOnRelease = restoresOnRelease
-    }
+    public init() {}
 
     public var isSwitched: Bool {
         state != .idle
     }
 
     /// - Parameters:
+    ///   - category: Which key was pressed, for the keys that type a character;
+    ///     nil for every other key.
     ///   - shifted: Whether Shift is held without ⌘, ⌃ or ⌥.
     ///   - currentID: The input source selected now.
     ///   - englishID: The English input source, if one is set up.
+    ///   - options: What switches in the application in front.
     public mutating func handle(
-        _ key: SlashCommandKey,
+        _ category: ShiftKeyCategory?,
         shifted: Bool,
         currentID: String?,
-        englishID: String?
+        englishID: String?,
+        options: ShiftEnglishOptions
     ) -> Decision {
         if case .switched = state {
             // Normally Shift was let go before; when that was missed, the first
@@ -54,7 +57,8 @@ public struct ShiftEnglishTracker: Equatable, Sendable {
 
         guard
             shifted,
-            key == .printable,
+            let category,
+            options.categories.contains(category),
             let currentID,
             let englishID,
             currentID != englishID,
@@ -63,12 +67,16 @@ public struct ShiftEnglishTracker: Equatable, Sendable {
             return .pass
         }
 
-        state = .switched(previousID: currentID, englishID: englishID)
+        state = .switched(
+            previousID: currentID,
+            englishID: englishID,
+            restoresOnRelease: options.restoresOnRelease
+        )
         return .switchToEnglish(englishID: englishID)
     }
 
     public mutating func shiftReleased(currentID: String?) -> Decision {
-        guard case .switched(let previousID, let englishID) = state else { return .pass }
+        guard case .switched(let previousID, let englishID, let restoresOnRelease) = state else { return .pass }
         state = .idle
         guard restoresOnRelease else { return .pass }
         return currentID == englishID ? .restore(inputSourceID: previousID) : .pass

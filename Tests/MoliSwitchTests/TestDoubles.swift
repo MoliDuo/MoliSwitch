@@ -449,6 +449,47 @@ final class FakeSlashCommandAppStore: SlashCommandAppStore, @unchecked Sendable 
     }
 }
 
+final class FakeShiftAppRuleStore: ShiftAppRuleStore, @unchecked Sendable {
+    let url = URL(fileURLWithPath: "/tmp/MoliSwitchTests/shift-app-rules.json")
+
+    private let lock = NSLock()
+    private var storedRules: [ShiftAppRule]
+    private var loadError: Error?
+    private(set) var saveCount = 0
+
+    init(rules: [ShiftAppRule] = []) {
+        self.storedRules = rules
+    }
+
+    var rules: [ShiftAppRule] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedRules
+    }
+
+    func failLoading(with error: Error?) {
+        lock.lock()
+        defer { lock.unlock() }
+        loadError = error
+    }
+
+    func load() throws -> [ShiftAppRule] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let loadError {
+            throw loadError
+        }
+        return storedRules
+    }
+
+    func save(_ rules: [ShiftAppRule]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        storedRules = rules
+        saveCount += 1
+    }
+}
+
 /// Lets a test press keys. Keys the runtime holds back count as typed once
 /// they are released.
 @MainActor
@@ -487,8 +528,10 @@ final class FakeKeyEventMonitor: KeyEventMonitoring {
     }
 
     /// Presses a key the way SystemKeyEventMonitor sees it.
-    func press(_ key: SlashCommandKey, shifted: Bool = false) {
-        let hold = handler?(.keyDown(key, shifted: shifted)) ?? false
+    /// Printable keys are letters and a slash is a symbol, unless category says.
+    func press(_ key: SlashCommandKey, shifted: Bool = false, category: ShiftKeyCategory? = nil) {
+        let category = category ?? Self.defaultCategory(of: key)
+        let hold = handler?(.keyDown(key, shifted: shifted, category: category)) ?? false
         if hold || !heldKeys.isEmpty {
             heldKeys.append(key)
         } else {
@@ -499,6 +542,14 @@ final class FakeKeyEventMonitor: KeyEventMonitoring {
     func press(_ keys: [SlashCommandKey]) {
         for key in keys {
             press(key)
+        }
+    }
+
+    private static func defaultCategory(of key: SlashCommandKey) -> ShiftKeyCategory? {
+        switch key {
+        case .printable: .letter
+        case .slash: .symbol
+        default: nil
         }
     }
 

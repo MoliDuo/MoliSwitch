@@ -20,8 +20,9 @@ public enum SlashCommandKey: Equatable, Sendable {
 
 /// What the key monitor passes on: a key pressed, or both Shift keys let go.
 public enum MonitoredKeyEvent: Equatable, Sendable {
-    /// shifted is set when Shift is held without ⌘, ⌃ or ⌥.
-    case keyDown(SlashCommandKey, shifted: Bool)
+    /// shifted is set when Shift is held without ⌘, ⌃ or ⌥. category is set
+    /// for the keys that type a character.
+    case keyDown(SlashCommandKey, shifted: Bool, category: ShiftKeyCategory? = nil)
     case shiftReleased
 }
 

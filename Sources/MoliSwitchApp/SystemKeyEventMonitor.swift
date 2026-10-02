@@ -127,7 +127,8 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
         let flags = event.flags
         let shifted = flags.contains(.maskShift)
             && flags.isDisjoint(with: [.maskCommand, .maskControl, .maskAlternate])
-        let hold = handler?(.keyDown(Self.key(for: event), shifted: shifted)) ?? false
+        let key = Self.key(for: event)
+        let hold = handler?(.keyDown(key, shifted: shifted, category: Self.category(of: event, key: key))) ?? false
         guard hold || isHolding, let copy = event.copy() else {
             return false
         }
@@ -153,6 +154,10 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
         static let escape: Int64 = 53
         static let keypadEnter: Int64 = 76
         static let forwardDelete: Int64 = 117
+        /// 1 to 9 and 0 on the number row, where they are on every layout.
+        static let numberRow: Set<Int64> = [18, 19, 20, 21, 23, 22, 26, 28, 25, 29]
+        /// 0 to 9 on the keypad.
+        static let keypadDigits: Set<Int64> = [82, 83, 84, 85, 86, 87, 88, 89, 91, 92]
     }
 
     /// What ⌃U and ⌃C type, which clears the input in shells and coding agents.
@@ -197,6 +202,19 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
             return .other
         }
         return .printable
+    }
+
+    /// Which key typed the character, for the keys that type one.
+    private static func category(of event: CGEvent, key: SlashCommandKey) -> ShiftKeyCategory? {
+        guard key == .printable || key == .slash else { return nil }
+        if characters(of: event).first?.isLetter == true {
+            return .letter
+        }
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        if KeyCode.numberRow.contains(keyCode) || KeyCode.keypadDigits.contains(keyCode) {
+            return .digit
+        }
+        return .symbol
     }
 
     /// The characters of the keyboard layout underneath the input method,

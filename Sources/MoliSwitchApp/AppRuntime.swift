@@ -18,6 +18,10 @@ final class AppRuntime: ObservableObject {
     static let slashCommandSwitchDelayKey = "slashCommandSwitchDelayMilliseconds"
     static let shiftEnglishEnabledKey = "shiftEnglishEnabled"
     static let shiftRestoresOnReleaseKey = "shiftRestoresOnRelease"
+    static let shiftEnglishCategoriesKey = "shiftEnglishCategories"
+    /// Set once the applications where Shift did not switch were carried over
+    /// into shift-app-rules.json.
+    static let shiftExcludedAppsMigratedKey = "didMigrateShiftExcludedApps"
     /// Settings picker value for "detect the input source automatically".
     static let automaticInputSourceID = ""
     /// Picker value of an application without a rule, which switches to the
@@ -43,9 +47,9 @@ final class AppRuntime: ObservableObject {
     @Published private(set) var fieldRuleEditingEnabled = true
     @Published private(set) var slashCommandApps = SlashCommandAppList()
     @Published private(set) var slashCommandAppEditingEnabled = true
-    /// Applications where holding Shift does not switch to English.
-    @Published private(set) var shiftExcludedApps = SlashCommandAppList()
-    @Published private(set) var shiftExcludedAppEditingEnabled = true
+    /// Applications with their own Shift settings.
+    @Published private(set) var shiftAppRules = ShiftAppRuleList()
+    @Published private(set) var shiftAppRuleEditingEnabled = true
     /// True when key presses cannot be seen although everything asks for it.
     @Published private(set) var keyMonitoringUnavailable = false
     /// Whether MoliSwitch may use Accessibility to see the focused field.
@@ -136,7 +140,7 @@ final class AppRuntime: ObservableObject {
         }
     }
     /// Whether characters typed with Shift held are typed with the English
-    /// input source, in every application but shiftExcludedApps.
+    /// input source, as globalShiftOptions or the application's rule says.
     @Published var shiftEnglishEnabled: Bool {
         didSet {
             guard shiftEnglishEnabled != oldValue else { return }
@@ -152,7 +156,17 @@ final class AppRuntime: ObservableObject {
         didSet {
             guard shiftRestoresOnRelease != oldValue else { return }
             defaults.set(shiftRestoresOnRelease, forKey: Self.shiftRestoresOnReleaseKey)
-            shiftTracker.restoresOnRelease = shiftRestoresOnRelease
+        }
+    }
+    /// The keys that switch to English with Shift held, in applications
+    /// without a rule of their own.
+    @Published var shiftEnglishCategories: Set<ShiftKeyCategory> {
+        didSet {
+            guard shiftEnglishCategories != oldValue else { return }
+            defaults.set(
+                ShiftKeyCategory.allCases.filter(shiftEnglishCategories.contains).map(\.rawValue),
+                forKey: Self.shiftEnglishCategoriesKey
+            )
         }
     }
     /// What applications without a rule switch to: noSwitchInputSourceID, a
@@ -172,6 +186,9 @@ final class AppRuntime: ObservableObject {
     private let commandStore: any CommandRuleStore
     private let fieldStore: any FieldRuleStore
     private let slashCommandAppStore: any SlashCommandAppStore
+    private let shiftAppRuleStore: any ShiftAppRuleStore
+    /// The applications where Shift did not switch, from before Shift had
+    /// settings per application; only read to carry them over.
     private let shiftExcludedAppStore: any SlashCommandAppStore
     private let keyEventMonitor: any KeyEventMonitoring
     private let slashCommandSwitchDelay: Duration
@@ -224,6 +241,7 @@ final class AppRuntime: ObservableObject {
         commandStore: any CommandRuleStore = JSONCommandRuleStore.applicationSupportStore(),
         fieldStore: any FieldRuleStore = JSONFieldRuleStore.applicationSupportStore(),
         slashCommandAppStore: any SlashCommandAppStore = JSONSlashCommandAppStore.applicationSupportStore(),
+        shiftAppRuleStore: any ShiftAppRuleStore = JSONShiftAppRuleStore.applicationSupportStore(),
         shiftExcludedAppStore: any SlashCommandAppStore = JSONSlashCommandAppStore.applicationSupportStore(
             fileName: "shift-excluded-apps.json"
         ),
@@ -247,6 +265,7 @@ final class AppRuntime: ObservableObject {
         self.commandStore = commandStore
         self.fieldStore = fieldStore
         self.slashCommandAppStore = slashCommandAppStore
+        self.shiftAppRuleStore = shiftAppRuleStore
         self.shiftExcludedAppStore = shiftExcludedAppStore
         self.keyEventMonitor = keyEventMonitor
         self.slashCommandSwitchDelay = slashCommandSwitchDelay
@@ -280,9 +299,10 @@ final class AppRuntime: ObservableObject {
         self.slashCommandRestoresOnSpace = restoresOnSpace
         self.slashCommandTracker = SlashCommandTracker(restoresOnSpace: restoresOnSpace)
         self.shiftEnglishEnabled = defaults.bool(forKey: Self.shiftEnglishEnabledKey)
-        let restoresOnRelease = defaults.object(forKey: Self.shiftRestoresOnReleaseKey) as? Bool ?? true
-        self.shiftRestoresOnRelease = restoresOnRelease
-        self.shiftTracker = ShiftEnglishTracker(restoresOnRelease: restoresOnRelease)
+        self.shiftRestoresOnRelease = defaults.object(forKey: Self.shiftRestoresOnReleaseKey) as? Bool ?? true
+        self.shiftEnglishCategories = (defaults.stringArray(forKey: Self.shiftEnglishCategoriesKey))
+            .map { Set($0.compactMap(ShiftKeyCategory.init(rawValue:))) }
+            ?? Set(ShiftKeyCategory.allCases)
         self.accessibilityTrusted = focusedFieldProvider.isTrusted
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
@@ -331,7 +351,7 @@ final class AppRuntime: ObservableObject {
     /// and the original file is left untouched.
     var hasStorageFailure: Bool {
         !ruleEditingEnabled || !commandRuleEditingEnabled || !fieldRuleEditingEnabled
-            || !slashCommandAppEditingEnabled || !shiftExcludedAppEditingEnabled
+            || !slashCommandAppEditingEnabled || !shiftAppRuleEditingEnabled
     }
 
     func reloadRulesFromDisk() {
@@ -360,7 +380,7 @@ final class AppRuntime: ObservableObject {
             loadCommandRules()
             loadFieldRules()
             loadSlashCommandApps()
-            loadShiftExcludedApps()
+            loadShiftAppRules()
             return
         }
 
@@ -373,8 +393,8 @@ final class AppRuntime: ObservableObject {
         if !loadSlashCommandApps() {
             storageStatus = .slashCommandAppsReadFailure
         }
-        if !loadShiftExcludedApps() {
-            storageStatus = .shiftExcludedAppsReadFailure
+        if !loadShiftAppRules() {
+            storageStatus = .shiftAppRulesReadFailure
         }
     }
 
@@ -415,15 +435,40 @@ final class AppRuntime: ObservableObject {
     }
 
     @discardableResult
-    private func loadShiftExcludedApps() -> Bool {
+    private func loadShiftAppRules() -> Bool {
         do {
-            shiftExcludedApps = SlashCommandAppList(normalizing: try shiftExcludedAppStore.load())
-            shiftExcludedAppEditingEnabled = true
+            var rules = ShiftAppRuleList(normalizing: try shiftAppRuleStore.load())
+            if !defaults.bool(forKey: Self.shiftExcludedAppsMigratedKey),
+               let migrated = try migrateShiftExcludedApps(into: rules)
+            {
+                rules = migrated
+                defaults.set(true, forKey: Self.shiftExcludedAppsMigratedKey)
+            }
+            shiftAppRules = rules
+            shiftAppRuleEditingEnabled = true
             return true
         } catch {
-            shiftExcludedAppEditingEnabled = false
+            shiftAppRuleEditingEnabled = false
             return false
         }
+    }
+
+    /// Turns Shift off in the applications where it did not switch before
+    /// Shift had settings per application. The old file stays in place; when
+    /// it cannot be read, nil is returned and it is tried again next time.
+    private func migrateShiftExcludedApps(into rules: ShiftAppRuleList) throws -> ShiftAppRuleList? {
+        guard let excluded = try? shiftExcludedAppStore.load() else { return nil }
+        var candidate = rules
+        for app in SlashCommandAppList(normalizing: excluded).apps
+        where candidate.rule(for: app.bundleIdentifier) == nil {
+            candidate.set(
+                ShiftAppRule(bundleIdentifier: app.bundleIdentifier, applicationName: app.applicationName, options: .off)
+            )
+        }
+        if candidate != rules {
+            try shiftAppRuleStore.save(candidate.rules)
+        }
+        return candidate
     }
 
     func revealRulesFileInFinder() {
@@ -436,8 +481,8 @@ final class AppRuntime: ObservableObject {
             url = fieldStore.url
         } else if !slashCommandAppEditingEnabled {
             url = slashCommandAppStore.url
-        } else if !shiftExcludedAppEditingEnabled {
-            url = shiftExcludedAppStore.url
+        } else if !shiftAppRuleEditingEnabled {
+            url = shiftAppRuleStore.url
         } else {
             url = store.url
         }
@@ -484,13 +529,15 @@ final class AppRuntime: ObservableObject {
         }
 
         // Applications chosen from elsewhere for slash commands or Shift.
-        for app in slashCommandApps.apps + shiftExcludedApps.apps
-        where seenBundleIdentifiers.insert(app.bundleIdentifier).inserted {
+        let otherApps = slashCommandApps.apps.map { ($0.bundleIdentifier, $0.applicationName) }
+            + shiftAppRules.rules.map { ($0.bundleIdentifier, $0.applicationName) }
+        for (bundleIdentifier, name) in otherApps
+        where seenBundleIdentifiers.insert(bundleIdentifier).inserted {
             result.append(
                 InstalledApplication(
-                    name: app.applicationName,
-                    bundleIdentifier: app.bundleIdentifier,
-                    url: NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)
+                    name: name,
+                    bundleIdentifier: bundleIdentifier,
+                    url: NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
                 )
             )
         }
@@ -505,11 +552,11 @@ final class AppRuntime: ObservableObject {
     }
 
     /// Applications with anything of their own: a rule, slash commands, or
-    /// Shift turned off.
+    /// Shift settings.
     private var configuredBundleIdentifiers: Set<String> {
         Set(ruleSet.rules.map(\.bundleIdentifier))
             .union(slashCommandApps.apps.map(\.bundleIdentifier))
-            .union(shiftExcludedApps.apps.map(\.bundleIdentifier))
+            .union(shiftAppRules.rules.map(\.bundleIdentifier))
     }
 
     var filteredInstalledApplications: [InstalledApplication] {
@@ -1047,38 +1094,52 @@ final class AppRuntime: ObservableObject {
 
     // MARK: - Shift
 
-    func usesShiftEnglish(_ application: InstalledApplication) -> Bool {
-        !shiftExcludedApps.contains(bundleIdentifier: application.bundleIdentifier)
+    /// What applications without a rule of their own use.
+    var globalShiftOptions: ShiftEnglishOptions {
+        ShiftEnglishOptions(categories: shiftEnglishCategories, restoresOnRelease: shiftRestoresOnRelease)
     }
 
-    func setUsesShiftEnglish(_ enabled: Bool, for application: InstalledApplication) {
-        guard shiftExcludedAppEditingEnabled else {
-            storageStatus = .shiftExcludedAppsReadFailure
+    /// The application's own Shift settings, or nil when it uses globalShiftOptions.
+    func shiftOptions(for application: InstalledApplication) -> ShiftEnglishOptions? {
+        shiftAppRules.rule(for: application.bundleIdentifier)?.options
+    }
+
+    /// Gives the application its own Shift settings, or with nil makes it use
+    /// globalShiftOptions again.
+    func setShiftOptions(_ options: ShiftEnglishOptions?, for application: InstalledApplication) {
+        guard shiftAppRuleEditingEnabled else {
+            storageStatus = .shiftAppRulesReadFailure
             return
         }
 
-        var candidate = shiftExcludedApps
-        if enabled {
-            candidate.remove(bundleIdentifier: application.bundleIdentifier)
-        } else {
-            candidate.insert(
-                SlashCommandApp(bundleIdentifier: application.bundleIdentifier, applicationName: application.name)
+        var candidate = shiftAppRules
+        if let options {
+            candidate.set(
+                ShiftAppRule(
+                    bundleIdentifier: application.bundleIdentifier,
+                    applicationName: application.name,
+                    options: options
+                )
             )
+        } else {
+            candidate.remove(bundleIdentifier: application.bundleIdentifier)
         }
-        guard candidate != shiftExcludedApps else { return }
+        guard candidate != shiftAppRules else { return }
 
         do {
-            try shiftExcludedAppStore.save(candidate.apps)
-            shiftExcludedApps = candidate
+            try shiftAppRuleStore.save(candidate.rules)
+            shiftAppRules = candidate
             storageStatus = .rulesSaved
         } catch {
             storageStatus = .rulesSaveFailure
         }
     }
 
-    /// Whether Shift switches to English in the application.
-    private func watchesShift(in app: RunningApplicationInfo) -> Bool {
-        shiftEnglishEnabled && !shiftExcludedApps.contains(bundleIdentifier: app.bundleIdentifier)
+    /// What Shift switches in the application, or nil when nothing.
+    private func shiftOptions(in app: RunningApplicationInfo) -> ShiftEnglishOptions? {
+        guard shiftEnglishEnabled else { return nil }
+        let options = shiftAppRules.rule(for: app.bundleIdentifier)?.options ?? globalShiftOptions
+        return options.switchesNothing ? nil : options
     }
 
     /// Whether a slash typed in the application may start a command.
@@ -1120,12 +1181,12 @@ final class AppRuntime: ObservableObject {
                 restoreAfterShift(previousID)
             }
             return false
-        case .keyDown(let key, let shifted):
-            return handleKeyDown(key, shifted: shifted)
+        case .keyDown(let key, let shifted, let category):
+            return handleKeyDown(key, shifted: shifted, category: category)
         }
     }
 
-    private func handleKeyDown(_ key: SlashCommandKey, shifted: Bool) -> Bool {
+    private func handleKeyDown(_ key: SlashCommandKey, shifted: Bool, category: ShiftKeyCategory?) -> Bool {
         // Keys typed while Shift switches back wait for it, so they are typed
         // with the input source used before.
         if shiftRestoreTask != nil {
@@ -1138,16 +1199,18 @@ final class AppRuntime: ObservableObject {
         let currentID = inputSourceManager.currentInputSource()?.id
 
         var shiftDecision = ShiftEnglishTracker.Decision.pass
-        if shiftTracker.isSwitched || watchesShift(in: app) {
+        let options = shiftOptions(in: app)
+        if shiftTracker.isSwitched || options != nil {
             shiftDecision = shiftTracker.handle(
-                key,
+                category,
                 shifted: shifted,
                 currentID: currentID,
-                englishID: effectiveEnglishInputSource?.id
+                englishID: effectiveEnglishInputSource?.id,
+                options: options ?? .off
             )
             if shiftDecision != .pass {
                 Diagnostics.shift.debug(
-                    "key \(String(describing: key), privacy: .public) in \(app.bundleIdentifier, privacy: .public) with \(currentID ?? "nil", privacy: .public): \(String(describing: shiftDecision), privacy: .public)"
+                    "key \(String(describing: key), privacy: .public) (\(category?.rawValue ?? "-", privacy: .public)) in \(app.bundleIdentifier, privacy: .public) with \(currentID ?? "nil", privacy: .public): \(String(describing: shiftDecision), privacy: .public)"
                 )
             }
         }

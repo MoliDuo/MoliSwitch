@@ -138,18 +138,9 @@ struct ApplicationsPage: View {
             .width(56)
 
             TableColumn("⇧ 英文") { application in
-                featureCheckbox(
-                    title: application.name + " 按住 Shift 时打英文",
-                    isOn: Binding(
-                        get: { runtime.usesShiftEnglish(application) },
-                        set: { runtime.setUsesShiftEnglish($0, for: application) }
-                    ),
-                    featureEnabled: runtime.shiftEnglishEnabled,
-                    editingEnabled: runtime.shiftExcludedAppEditingEnabled,
-                    help: "按住 Shift 时打英文"
-                )
+                ShiftOptionsCell(runtime: runtime, application: application)
             }
-            .width(56)
+            .width(min: 80, ideal: 110, max: 160)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
     }
@@ -184,6 +175,125 @@ struct ApplicationsPage: View {
         }
         .frame(width: 24, height: 24)
         .accessibilityHidden(true)
+    }
+}
+
+/// How Shift works in one application, opening an editor for it.
+private struct ShiftOptionsCell: View {
+    @ObservedObject var runtime: AppRuntime
+    let application: InstalledApplication
+    @State private var isEditing = false
+
+    var body: some View {
+        let editable = runtime.shiftEnglishEnabled && runtime.shiftAppRuleEditingEnabled
+
+        Button {
+            isEditing = true
+        } label: {
+            HStack(spacing: 3) {
+                Text(summary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.borderless)
+        .disabled(!editable)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .help(runtime.shiftEnglishEnabled ? "按住 Shift 时哪些键打英文" : "在“自动切换”里打开后才能设置")
+        .accessibilityLabel(application.name + " 按住 Shift 时打英文：" + summary)
+        .popover(isPresented: $isEditing, arrowEdge: .bottom) {
+            ShiftOptionsEditor(runtime: runtime, application: application)
+        }
+    }
+
+    private var summary: String {
+        guard let options = runtime.shiftOptions(for: application) else { return "默认" }
+        return options.summary
+    }
+}
+
+/// Chooses whether an application follows the Shift settings in 自动切换,
+/// turns Shift off, or has keys of its own.
+private struct ShiftOptionsEditor: View {
+    private enum Mode: Hashable {
+        case followDefault
+        case off
+        case custom
+    }
+
+    @ObservedObject var runtime: AppRuntime
+    let application: InstalledApplication
+    /// Kept apart from the saved options, so unticking every key in 自定义
+    /// keeps the checkboxes on screen.
+    @State private var mode: Mode = .followDefault
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(application.name + " 按住 Shift 时")
+                .font(.headline)
+                .lineLimit(1)
+
+            Picker("方式", selection: modeBinding) {
+                Text("默认").tag(Mode.followDefault)
+                Text("关闭").tag(Mode.off)
+                Text("自定义").tag(Mode.custom)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            switch mode {
+            case .followDefault:
+                Text("用“自动切换”里的设置：" + runtime.globalShiftOptions.summary + "。")
+                    .foregroundStyle(.secondary)
+            case .off:
+                Text("在这个 App 里按住 Shift 不切换输入法。")
+                    .foregroundStyle(.secondary)
+            case .custom:
+                ShiftCategoryToggles(categories: optionBinding(\.categories))
+                Toggle("松开 Shift 后切回原输入法", isOn: optionBinding(\.restoresOnRelease))
+            }
+        }
+        .padding(16)
+        .frame(width: 300, alignment: .leading)
+        .onAppear {
+            switch runtime.shiftOptions(for: application) {
+            case nil: mode = .followDefault
+            case let options? where options.switchesNothing: mode = .off
+            case _?: mode = .custom
+            }
+        }
+    }
+
+    private var modeBinding: Binding<Mode> {
+        Binding(
+            get: { mode },
+            set: { newMode in
+                guard newMode != mode else { return }
+                mode = newMode
+                switch newMode {
+                case .followDefault:
+                    runtime.setShiftOptions(nil, for: application)
+                case .off:
+                    runtime.setShiftOptions(.off, for: application)
+                case .custom:
+                    let global = runtime.globalShiftOptions
+                    runtime.setShiftOptions(global.switchesNothing ? .all : global, for: application)
+                }
+            }
+        )
+    }
+
+    private func optionBinding<Value>(_ keyPath: WritableKeyPath<ShiftEnglishOptions, Value>) -> Binding<Value> {
+        Binding(
+            get: { (runtime.shiftOptions(for: application) ?? runtime.globalShiftOptions)[keyPath: keyPath] },
+            set: { newValue in
+                var options = runtime.shiftOptions(for: application) ?? runtime.globalShiftOptions
+                options[keyPath: keyPath] = newValue
+                runtime.setShiftOptions(options, for: application)
+            }
+        )
     }
 }
 
