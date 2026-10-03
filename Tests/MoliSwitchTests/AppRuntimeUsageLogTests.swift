@@ -21,6 +21,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
     @MainActor
     func testAppRuleLogsFocusAndSwitch() {
         let fixture = makeFixture(
+            usageLogging: true,
             rules: [
                 makeRule(
                     bundleIdentifier: notes.bundleIdentifier,
@@ -52,6 +53,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
     @MainActor
     func testFailedSwitchIsLoggedWithSnapshot() {
         let fixture = makeFixture(
+            usageLogging: true,
             rules: [
                 makeRule(
                     bundleIdentifier: notes.bundleIdentifier,
@@ -75,6 +77,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
     @MainActor
     func testRuleForCurrentInputSourceIsLoggedAsSkipped() {
         let fixture = makeFixture(
+            usageLogging: true,
             rules: [makeRule(bundleIdentifier: notes.bundleIdentifier)]
         )
 
@@ -89,6 +92,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
     @MainActor
     func testOutsideSwitchIsManualAndOwnSwitchIsNot() {
         let fixture = makeFixture(
+            usageLogging: true,
             rules: [
                 makeRule(
                     bundleIdentifier: notes.bundleIdentifier,
@@ -120,6 +124,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
     @MainActor
     func testShiftKeysAndSwitchAreLogged() async {
         let fixture = makeFixture(
+            usageLogging: true,
             sources: [TestInputSources.us, TestInputSources.shuangpin],
             current: TestInputSources.shuangpin
         )
@@ -142,6 +147,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
     @MainActor
     func testNothingIsLoggedWhenTurnedOff() {
         let fixture = makeFixture(
+            usageLogging: true,
             rules: [makeRule(bundleIdentifier: notes.bundleIdentifier, inputSourceID: TestInputSources.abc.id)],
             defaultsValues: [AppRuntime.usageLoggingEnabledKey: true]
         )
@@ -153,5 +159,44 @@ final class AppRuntimeUsageLogTests: XCTestCase {
         XCTAssertEqual(fixture.usage.events.count, before)
         XCTAssertFalse(fixture.usage.isEnabled)
         XCTAssertEqual(fixture.defaults.object(forKey: AppRuntime.usageLoggingEnabledKey) as? Bool, false)
+    }
+
+    @MainActor
+    func testKeyLogsCharactersExceptInSecureInput() {
+        let fixture = makeFixture(usageLogging: true)
+        fixture.runtime.applyRuleIfNeeded(for: notes)
+
+        fixture.keys.press(.printable, detail: KeyDetail(keyCode: 0, characters: "a"))
+        fixture.keys.press(.printable, detail: KeyDetail(keyCode: 1, characters: "s", isSecureInput: true))
+
+        let keys = fixture.usage.events(named: "key")
+        XCTAssertEqual(string(keys[0], "chars"), "a")
+        XCTAssertNil(keys[1].fields["chars"])
+        XCTAssertEqual(bool(keys[1], "redacted"), true)
+    }
+
+    @MainActor
+    func testReturnLogsTextOfFocusedField() {
+        let fixture = makeFixture(usageLogging: true)
+        fixture.runtime.applyRuleIfNeeded(for: notes)
+        fixture.fields.details = ["identifier": "box", "value": "你好", "secure": false]
+
+        fixture.keys.press(.returnKey, detail: KeyDetail(keyCode: 36, characters: "\r"))
+
+        let texts = fixture.usage.events(named: "fieldText")
+        XCTAssertEqual(texts.count, 1)
+        XCTAssertEqual(string(texts[0], "value"), "你好")
+        XCTAssertEqual(string(texts[0], "reason"), "return")
+    }
+
+    @MainActor
+    func testSecureFieldTextIsNotLogged() {
+        let fixture = makeFixture(usageLogging: true)
+        fixture.runtime.applyRuleIfNeeded(for: notes)
+        fixture.fields.details = ["value": "hunter2", "secure": true]
+
+        fixture.keys.press(.returnKey, detail: KeyDetail(keyCode: 36, characters: "\r"))
+
+        XCTAssertTrue(fixture.usage.events(named: "fieldText").isEmpty)
     }
 }

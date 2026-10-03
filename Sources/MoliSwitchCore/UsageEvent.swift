@@ -72,7 +72,7 @@ extension JSONValue: ExpressibleByFloatLiteral {
 ///
 /// Written as a single flat JSON object, `t` (local time with milliseconds),
 /// `mono` (milliseconds of system uptime, for exact intervals), `e` (the name
-/// of the event), then the fields of the event. Never what was typed.
+/// of the event), then the fields of the event. Includes typed characters and field text, except in password fields.
 public struct UsageEvent: Equatable, Sendable {
     public let time: Date
     /// Milliseconds since the system started, which does not jump with the clock.

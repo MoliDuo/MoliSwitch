@@ -45,6 +45,7 @@ struct RuntimeFixture {
 
 @MainActor
 func makeFixture(
+    usageLogging: Bool = false,
     rules: [AppRule] = [],
     commandRules: [CommandRule] = [],
     fieldRules: [FieldRule] = [],
@@ -61,6 +62,7 @@ func makeFixture(
     let suiteName = "MoliSwitchTests." + UUID().uuidString
     let defaults = UserDefaults(suiteName: suiteName) ?? .standard
     defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(usageLogging, forKey: AppRuntime.usageLoggingEnabledKey)
     for (key, value) in defaultsValues {
         defaults.set(value, forKey: key)
     }

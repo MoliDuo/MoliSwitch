@@ -80,7 +80,7 @@ struct GeneralPage: View {
             } footer: {
                 SectionFooter(
                     "记下前台 App、输入法切换、按键的种类和时间，用来分析并优化配置。"
-                        + "只保存在这台 Mac 上，不记录你输入的内容，保留 30 天。"
+                        + "只保存在这台 Mac 上，保留 30 天。会记录按键、输入框信息和输入框里的文字（密码框和密码管理器除外）。"
                 )
             }
             .confirmationDialog("清除全部使用日志？", isPresented: $confirmsClearingUsageLog) {

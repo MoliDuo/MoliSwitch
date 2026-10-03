@@ -76,6 +76,16 @@ protocol FocusedFieldProviding: AnyObject {
     /// input, or nil when the application does not tell. Only the caret
     /// position and the length are read.
     func isCaretAtStart() -> Bool?
+    /// Everything the focused element tells, for the usage log: its role,
+    /// labels, web page ids, window title, URL, caret and, when asked, the text
+    /// in it. Empty when there is nothing focused.
+    func currentFieldDetails(includeValue: Bool) -> [String: JSONValue]
+}
+
+extension FocusedFieldProviding {
+    func currentFieldDetails(includeValue: Bool) -> [String: JSONValue] {
+        [:]
+    }
 }
 
 /// Sees the keys typed in every application, and can hold one back until the

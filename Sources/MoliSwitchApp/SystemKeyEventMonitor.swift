@@ -1,10 +1,11 @@
 import AppKit
+import Carbon.HIToolbox
 import CoreGraphics
 import MoliSwitchCore
 
 /// Sees key presses in every application through a session event tap, which
-/// needs the Accessibility permission. Only which kind of key was pressed is
-/// passed on, never what was typed.
+/// needs the Accessibility permission. The kind of key is passed on, along with
+/// the characters of the key for the usage log.
 @MainActor
 final class SystemKeyEventMonitor: KeyEventMonitoring {
     /// Set on the keys this monitor types itself, so they pass untouched.
@@ -129,7 +130,15 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
         let shifted = flags.contains(.maskShift)
             && flags.isDisjoint(with: [.maskCommand, .maskControl, .maskAlternate])
         let key = Self.key(for: event)
-        let hold = handler?(.keyDown(key, shifted: shifted, category: Self.category(of: event, key: key))) ?? false
+        let detail = KeyDetail(
+            keyCode: Int(event.getIntegerValueField(.keyboardEventKeycode)),
+            characters: Self.characters(of: event),
+            modifiers: Self.modifierNames(flags),
+            isSecureInput: IsSecureEventInputEnabled()
+        )
+        let hold = handler?(
+            .keyDown(key, shifted: shifted, category: Self.category(of: event, key: key), detail: detail)
+        ) ?? false
         guard hold || isHolding, let copy = event.copy() else {
             return false
         }
@@ -143,6 +152,12 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
         }
         heldEvents.append(copy)
         return true
+    }
+
+    private static func modifierNames(_ flags: CGEventFlags) -> [String] {
+        [(CGEventFlags.maskShift, "shift"), (.maskControl, "ctrl"), (.maskAlternate, "alt"), (.maskCommand, "cmd")]
+            .filter { flags.contains($0.0) }
+            .map(\.1)
     }
 
     // MARK: - Kinds of keys

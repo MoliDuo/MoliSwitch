@@ -18,11 +18,30 @@ public enum SlashCommandKey: Equatable, Sendable {
     case other
 }
 
+/// What a key press looked like, for the usage log.
+public struct KeyDetail: Equatable, Sendable {
+    public var keyCode: Int
+    /// The characters of the keyboard layout underneath the input method, so
+    /// the letters of the pinyin while typing Chinese.
+    public var characters: String
+    /// Held modifiers, for example ["shift", "cmd"].
+    public var modifiers: [String]
+    /// Whether secure input was on, as it is in password fields.
+    public var isSecureInput: Bool
+
+    public init(keyCode: Int, characters: String, modifiers: [String] = [], isSecureInput: Bool = false) {
+        self.keyCode = keyCode
+        self.characters = characters
+        self.modifiers = modifiers
+        self.isSecureInput = isSecureInput
+    }
+}
+
 /// What the key monitor passes on: a key pressed, or both Shift keys let go.
 public enum MonitoredKeyEvent: Equatable, Sendable {
     /// shifted is set when Shift is held without ⌘, ⌃ or ⌥. category is set
-    /// for the keys that type a character.
-    case keyDown(SlashCommandKey, shifted: Bool, category: ShiftKeyCategory? = nil)
+    /// for the keys that type a character. detail is only for the usage log.
+    case keyDown(SlashCommandKey, shifted: Bool, category: ShiftKeyCategory? = nil, detail: KeyDetail? = nil)
     case shiftReleased
 }
 

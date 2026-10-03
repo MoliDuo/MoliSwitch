@@ -375,6 +375,8 @@ final class FakeFocusedFieldProvider: FocusedFieldProviding {
     private(set) var observedBundleIdentifier: String?
     /// What isCaretAtStart reports.
     var caretAtStart: Bool?
+    /// What currentFieldDetails reports.
+    var details: [String: JSONValue] = [:]
     private var field: FieldSignature?
     private var handler: (@MainActor (FieldSignature?) -> Void)?
 
@@ -394,6 +396,10 @@ final class FakeFocusedFieldProvider: FocusedFieldProviding {
 
     func currentField() -> FieldSignature? {
         field
+    }
+
+    func currentFieldDetails(includeValue: Bool) -> [String: JSONValue] {
+        includeValue ? details : details.filter { $0.key != "value" }
     }
 
     func isCaretAtStart() -> Bool? {
@@ -529,9 +535,14 @@ final class FakeKeyEventMonitor: KeyEventMonitoring {
 
     /// Presses a key the way SystemKeyEventMonitor sees it.
     /// Printable keys are letters and a slash is a symbol, unless category says.
-    func press(_ key: SlashCommandKey, shifted: Bool = false, category: ShiftKeyCategory? = nil) {
+    func press(
+        _ key: SlashCommandKey,
+        shifted: Bool = false,
+        category: ShiftKeyCategory? = nil,
+        detail: KeyDetail? = nil
+    ) {
         let category = category ?? Self.defaultCategory(of: key)
-        let hold = handler?(.keyDown(key, shifted: shifted, category: category)) ?? false
+        let hold = handler?(.keyDown(key, shifted: shifted, category: category, detail: detail)) ?? false
         if hold || !heldKeys.isEmpty {
             heldKeys.append(key)
         } else {

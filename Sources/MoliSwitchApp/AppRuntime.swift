@@ -91,10 +91,13 @@ final class AppRuntime: ObservableObject {
                 logUsage("setting", ["name": "usageLoggingEnabled", "value": "true"])
                 logSnapshot("loggingEnabled")
             } else {
+                fieldTextTask?.cancel()
                 logUsage("setting", ["name": "usageLoggingEnabled", "value": "false"])
                 usageLogger.flush()
                 usageLogger.isEnabled = false
             }
+            updateKeyMonitoring()
+            refreshFieldObservation()
         }
     }
     /// Whether command rules apply in Terminal and iTerm2.
@@ -248,6 +251,9 @@ final class AppRuntime: ObservableObject {
     /// The input source this app asked for last, to tell its own switches from
     /// the user's when the system reports a change.
     private var pendingSelfSwitch: (id: String, mono: Double)?
+    private var fieldTextTask: Task<Void, Never>?
+    private var lastLoggedFieldText: (identity: String, text: String)?
+    private var lastFieldDetailsKey: String?
     private var lastFocusMono: Double?
     /// The input source the system reported last.
     private var lastObservedSourceID: String?
@@ -1241,7 +1247,8 @@ final class AppRuntime: ObservableObject {
     /// them, and Accessibility allows it.
     private func updateKeyMonitoring() {
         let wanted = !hasStopped
-            && ((slashCommandSwitchingEnabled && !slashCommandApps.apps.isEmpty) || shiftEnglishEnabled)
+            && ((slashCommandSwitchingEnabled && !slashCommandApps.apps.isEmpty) || shiftEnglishEnabled
+                || usageLoggingEnabled)
             && accessibilityTrusted
 
         if wanted {
@@ -1276,21 +1283,28 @@ final class AppRuntime: ObservableObject {
                 restoreAfterShift(previousID)
             }
             return false
-        case .keyDown(let key, let shifted, let category):
-            return handleKeyDown(key, shifted: shifted, category: category)
+        case .keyDown(let key, let shifted, let category, let detail):
+            return handleKeyDown(key, shifted: shifted, category: category, detail: detail)
         }
     }
 
-    private func handleKeyDown(_ key: SlashCommandKey, shifted: Bool, category: ShiftKeyCategory?) -> Bool {
+    private func handleKeyDown(
+        _ key: SlashCommandKey,
+        shifted: Bool,
+        category: ShiftKeyCategory?,
+        detail: KeyDetail?
+    ) -> Bool {
+        let keyFields = keyLogFields(key, shifted: shifted, category: category, detail: detail)
+        noteTypingForFieldText(key)
         // Keys typed while Shift switches back wait for it, so they are typed
         // with the input source used before.
         if shiftRestoreTask != nil {
             shiftRestoreHoldsKeys = true
-            logUsage("key", Self.keyFields(key, shifted: shifted, category: category) + ["held": "shiftRestore"])
+            logUsage("key", keyFields + ["held": "shiftRestore"])
             return true
         }
         guard let app = currentApplication else {
-            logUsage("key", Self.keyFields(key, shifted: shifted, category: category) + ["held": "noApp"])
+            logUsage("key", keyFields + ["held": "noApp"])
             return false
         }
 
@@ -1321,7 +1335,7 @@ final class AppRuntime: ObservableObject {
 
         logUsage(
             "key",
-            Self.keyFields(key, shifted: shifted, category: category) + [
+            keyFields + [
                 "current": .optional(currentID),
                 "shift": .string(String(describing: shiftDecision)),
                 "heldForSlash": .bool(holdsForSlash),
@@ -1997,7 +2011,8 @@ final class AppRuntime: ObservableObject {
         accessibilityTrusted
             && (fieldRuleSet.hasRules(forBundleIdentifier: app.bundleIdentifier)
                 || (addressBarSwitchingEnabled && AddressBarDetector.isBrowser(bundleIdentifier: app.bundleIdentifier))
-                || watchesSlashCommands(in: app))
+                || watchesSlashCommands(in: app)
+                || usageLoggingEnabled)
     }
 
     private func followFields(of app: RunningApplicationInfo) {
@@ -2013,6 +2028,12 @@ final class AppRuntime: ObservableObject {
             self?.handleFocusedFieldChanged(field)
         }
         focusedField = focusedFieldProvider.currentField()
+        let details = focusedFieldProvider.currentFieldDetails(includeValue: false)
+        lastFieldDetailsKey = String(describing: details.sorted { $0.key < $1.key })
+        logUsage(
+            "fieldFocus",
+            ["field": Self.jsonValue(of: focusedField), "detail": .object(details), "initial": true]
+        )
     }
 
     private func stopFollowingFields() {
@@ -2023,9 +2044,15 @@ final class AppRuntime: ObservableObject {
     }
 
     private func handleFocusedFieldChanged(_ field: FieldSignature?) {
-        guard let app = fieldApplication, app == currentApplication, field != focusedField else { return }
+        guard let app = fieldApplication, app == currentApplication else { return }
+        let details = focusedFieldProvider.currentFieldDetails(includeValue: false)
+        let detailsKey = String(describing: details.sorted { $0.key < $1.key })
+        let changed = field != focusedField
+        guard changed || detailsKey != lastFieldDetailsKey else { return }
+        lastFieldDetailsKey = detailsKey
         focusedField = field
-        logUsage("fieldFocus", ["field": Self.jsonValue(of: field)])
+        logUsage("fieldFocus", ["field": Self.jsonValue(of: field), "detail": .object(details)])
+        guard changed else { return }
         endSlashCommandForFocusChange()
         reapplyIfContextChanged(for: app)
     }
@@ -2371,16 +2398,68 @@ final class AppRuntime: ObservableObject {
         return Double(parts.seconds) * 1000 + Double(parts.attoseconds) / 1e15
     }
 
-    private static func keyFields(
+    /// Apps whose keys and text are never written to the log, because what is
+    /// typed there is secret.
+    private static let unloggedTextApps = ["bitwarden", "1password", "keychainaccess", "LocalAuthentication"]
+
+    /// Whether what is typed in the current field may be written to the log:
+    /// not in password fields, with secure input on, or in password managers.
+    private func mayLogTypedText(secureInput: Bool = false) -> Bool {
+        if secureInput || focusedField?.subrole == "AXSecureTextField" { return false }
+        let id = currentApplication?.bundleIdentifier.lowercased() ?? ""
+        return !Self.unloggedTextApps.contains { id.contains($0.lowercased()) }
+    }
+
+    private func keyLogFields(
         _ key: SlashCommandKey,
         shifted: Bool,
-        category: ShiftKeyCategory?
+        category: ShiftKeyCategory?,
+        detail: KeyDetail?
     ) -> [String: JSONValue] {
-        [
+        var fields: [String: JSONValue] = [
             "key": .string(String(describing: key)),
             "shifted": .bool(shifted),
             "category": .optional(category?.rawValue),
         ]
+        if let detail {
+            fields["keyCode"] = .int(detail.keyCode)
+            fields["mods"] = .strings(detail.modifiers)
+            if mayLogTypedText(secureInput: detail.isSecureInput) {
+                fields["chars"] = .string(detail.characters)
+            } else {
+                fields["redacted"] = true
+            }
+        }
+        return fields
+    }
+
+    // MARK: - Text of the focused field
+
+    /// Writes what is in the focused field after typing stops, and when Return
+    /// is pressed, before the application sends it. This is what the input
+    /// method finally typed, which the keys alone do not tell for Chinese.
+    private func noteTypingForFieldText(_ key: SlashCommandKey) {
+        guard usageLoggingEnabled else { return }
+        fieldTextTask?.cancel()
+        if key == .returnKey {
+            logFieldText(reason: "return")
+        }
+        fieldTextTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.logFieldText(reason: "idle")
+        }
+    }
+
+    private func logFieldText(reason: String) {
+        guard usageLoggingEnabled, let app = currentApplication, mayLogTypedText() else { return }
+        var details = focusedFieldProvider.currentFieldDetails(includeValue: true)
+        guard details["secure"] != true, case .string(let text)? = details["value"] else { return }
+        let identity = "\(app.bundleIdentifier)|\(details["identifier"] ?? .null)|\(details["windowTitle"] ?? .null)"
+        guard (identity, text) != lastLoggedFieldText ?? ("", "") else { return }
+        lastLoggedFieldText = (identity, text)
+        details["reason"] = .string(reason)
+        logUsage("fieldText", details)
     }
 
     private static func jsonValue(of field: FieldSignature?) -> JSONValue {

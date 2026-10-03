@@ -109,6 +109,11 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
         return nil
     }
 
+    func currentFieldDetails(includeValue: Bool) -> [String: JSONValue] {
+        guard let focused = focusedElement() else { return [:] }
+        return Self.details(of: focused, includeValue: includeValue)
+    }
+
     private func focusedElement() -> AXUIElement? {
         guard isTrusted, let application = NSWorkspace.shared.frontmostApplication else {
             return nil
@@ -173,6 +178,79 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
             ancestorRoles: ancestorRoles,
             isInWebArea: isInWebArea
         )
+    }
+
+    /// How much of the text in a field is kept, from the end, where typing is.
+    private static let maximumValueLength = 2000
+
+    static func details(of element: AXUIElement, includeValue: Bool) -> [String: JSONValue] {
+        var details: [String: JSONValue] = [:]
+        let strings: [(String, String)] = [
+            ("role", kAXRoleAttribute), ("subrole", kAXSubroleAttribute),
+            ("roleDescription", kAXRoleDescriptionAttribute), ("title", kAXTitleAttribute),
+            ("description", kAXDescriptionAttribute), ("placeholder", kAXPlaceholderValueAttribute),
+            ("help", kAXHelpAttribute), ("identifier", kAXIdentifierAttribute),
+            ("domId", "AXDOMIdentifier"),
+        ]
+        for (name, attribute) in strings {
+            if let value = string(element, attribute), !value.isEmpty {
+                details[name] = .string(value)
+            }
+        }
+        if let classes = copyAttribute(element, "AXDOMClassList") as? [String], !classes.isEmpty {
+            details["domClasses"] = .strings(classes)
+        }
+
+        if let window = self.element(element, kAXWindowAttribute) {
+            if let title = string(window, kAXTitleAttribute), !title.isEmpty {
+                details["windowTitle"] = .string(title)
+            }
+            if let document = string(window, kAXDocumentAttribute), !document.isEmpty {
+                details["windowDocument"] = .string(document)
+            }
+        }
+
+        // The page address, from the web area around a field in a browser.
+        var current = element
+        for _ in 0..<maximumAncestorWalk {
+            guard let parent = self.element(current, kAXParentAttribute) else { break }
+            if string(parent, kAXRoleAttribute) == "AXWebArea" {
+                if let url = copyAttribute(parent, "AXURL") {
+                    details["url"] = .string((url as? URL)?.absoluteString ?? String(describing: url))
+                }
+                if let title = string(parent, kAXTitleAttribute), !title.isEmpty {
+                    details["pageTitle"] = .string(title)
+                }
+                break
+            }
+            current = parent
+        }
+
+        if let count = copyAttribute(element, kAXNumberOfCharactersAttribute) as? Int {
+            details["length"] = .int(count)
+        }
+        if
+            let value = copyAttribute(element, kAXSelectedTextRangeAttribute),
+            CFGetTypeID(value) == AXValueGetTypeID()
+        {
+            var range = CFRange()
+            if AXValueGetValue(value as! AXValue, .cfRange, &range) {
+                details["caret"] = .int(range.location)
+                details["selection"] = .int(range.length)
+            }
+        }
+
+        let isSecure = string(element, kAXSubroleAttribute) == "AXSecureTextField"
+        details["secure"] = .bool(isSecure)
+        if includeValue, !isSecure, let text = copyAttribute(element, kAXValueAttribute) as? String {
+            if text.count > maximumValueLength {
+                details["value"] = .string(String(text.suffix(maximumValueLength)))
+                details["valueTruncated"] = true
+            } else {
+                details["value"] = .string(text)
+            }
+        }
+        return details
     }
 
     private static func copyAttribute(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
