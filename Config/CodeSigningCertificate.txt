@@ -1,8 +1,8 @@
-# 正式版代码签名证书的 SHA-1 指纹（自签名，CN=AutoInputSwitcher Self-Signed Code Signing）。
+# 正式版代码签名证书的 SHA-1 指纹（自签名，CN=Moli Self-Signed Code Signing，与 MoliWhisper 等 Moli 系列 macOS 应用共用）。
 #
 # 由 Scripts/setup-signing-certificate.sh 生成；可以公开、可以提交。
 # 对应的 .p12 只保存在 GitHub Actions secrets CODESIGN_P12_BASE64 / CODESIGN_P12_PASSWORD 中，
 # 并另行离线备份。换证书会让所有用户重新授权一次辅助功能与自动化权限。
 #
 # Scripts/verify-package.sh 在 REQUIRE_SIGNING_CERTIFICATE=1 时要求应用由这张证书签名。
-42a19ebb5a7a34a7b6a41686c15864823c8e3771
+319b1ba057375e21ae752764d4fcd38b6c13d9f6
