@@ -66,26 +66,53 @@ public struct UsageAnalyzer: Sendable {
         var fieldSignatures: [String: FieldSignature?] = [:]
         var fieldLetters: [FieldKey: [String: Int]] = [:]
 
-        let decoder = JSONDecoder()
         for line in lines {
+            // Most lines are keys and diagnostics; only parse what is used, and
+            // read the most frequent one, a letter key, without parsing at all.
+            var text = line
+            let quick: (kind: Kind, app: String?, source: String?) = text.withUTF8 { buffer in
+                if Self.contains(Self.keyEvent, in: buffer) {
+                    guard Self.contains(Self.letterCategory, in: buffer) else { return (.skip, nil, nil) }
+                    return (.key, Self.value(after: Self.appKey, in: buffer), Self.value(after: Self.currentKey, in: buffer))
+                }
+                if Self.contains(Self.manualSwitchEvent, in: buffer) { return (.manualSwitch, nil, nil) }
+                if Self.contains(Self.fieldFocusEvent, in: buffer) { return (.fieldFocus, nil, nil) }
+                if Self.contains(Self.appFocusEvent, in: buffer) { return (.appFocus, nil, nil) }
+                return (.skip, nil, nil)
+            }
+            let kind: String
+            switch quick.kind {
+            case .skip:
+                continue
+            case .key:
+                guard
+                    let app = quick.app,
+                    let source = quick.source,
+                    let signature = fieldSignatures[app] ?? nil
+                else { continue }
+                fieldLetters[FieldKey(bundleIdentifier: app, signature: signature), default: [:]][source, default: 0] += 1
+                continue
+            case .manualSwitch: kind = "manualSwitch"
+            case .fieldFocus: kind = "fieldFocus"
+            case .appFocus: kind = "appFocus"
+            }
             guard
                 let data = line.data(using: .utf8),
-                case .object(let event)? = try? decoder.decode(JSONValue.self, from: data),
-                case .string(let kind)? = event["e"],
-                case .string(let app)? = event["app"]
+                let event = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                let app = event["app"] as? String
             else { continue }
 
             switch kind {
             case "appFocus":
-                if case .string(let name)? = event["appName"] { applicationNames[app] = name }
+                if let name = event["appName"] as? String { applicationNames[app] = name }
             case "fieldFocus":
                 fieldSignatures[app] = Self.signature(from: event["field"])
             case "manualSwitch":
-                guard case .string(let to)? = event["to"] else { continue }
-                let from = event["from"].flatMap(Self.string)
-                if case .bool(true)? = event["ownSwitch"] { continue }
-                if case .bool(true)? = event["undoesPrevious"] { continue }
-                let mono = event["mono"].flatMap(Self.number) ?? 0
+                guard let to = event["to"] as? String else { continue }
+                let from = event["from"] as? String
+                if event["ownSwitch"] as? Bool == true { continue }
+                if event["undoesPrevious"] as? Bool == true { continue }
+                let mono = (event["mono"] as? NSNumber)?.doubleValue ?? 0
                 if let last = lastManual[app], mono - last.mono < thresholds.flickerMilliseconds,
                    last.from == to, let lastTo = last.to {
                     // A flicker: take the first half back.
@@ -95,13 +122,6 @@ public struct UsageAnalyzer: Sendable {
                 }
                 manualSwitches[app, default: [:]][to, default: 0] += 1
                 lastManual[app] = (from, to, mono)
-            case "key":
-                guard
-                    case .string(let category)? = event["category"], category == "letter",
-                    case .string(let source)? = event["current"],
-                    let signature = fieldSignatures[app] ?? nil
-                else { continue }
-                fieldLetters[FieldKey(bundleIdentifier: app, signature: signature), default: [:]][source, default: 0] += 1
             default:
                 break
             }
@@ -160,39 +180,51 @@ public struct UsageAnalyzer: Sendable {
         return result
     }
 
-    private static func string(_ value: JSONValue) -> String? {
-        if case .string(let text) = value { return text }
-        return nil
+    private enum Kind { case skip, key, manualSwitch, fieldFocus, appFocus }
+
+    private static let keyEvent = Array("\"e\":\"key\"".utf8)
+    private static let letterCategory = Array("\"category\":\"letter\"".utf8)
+    private static let manualSwitchEvent = Array("\"e\":\"manualSwitch\"".utf8)
+    private static let fieldFocusEvent = Array("\"e\":\"fieldFocus\"".utf8)
+    private static let appFocusEvent = Array("\"e\":\"appFocus\"".utf8)
+    private static let appKey = Array("\"app\":\"".utf8)
+    private static let currentKey = Array("\"current\":\"".utf8)
+
+    private static func contains(_ needle: [UInt8], in buffer: UnsafeBufferPointer<UInt8>) -> Bool {
+        guard let base = buffer.baseAddress else { return false }
+        return memmem(base, buffer.count, needle, needle.count) != nil
     }
 
-    private static func number(_ value: JSONValue) -> Double? {
-        switch value {
-        case .double(let number): return number
-        case .int(let number): return Double(number)
-        default: return nil
+    /// The string after a `"key":"` marker, for the plain identifiers the log
+    /// writes there, which never contain quotes or escapes.
+    private static func value(after marker: [UInt8], in buffer: UnsafeBufferPointer<UInt8>) -> String? {
+        guard let base = buffer.baseAddress, let found = memmem(base, buffer.count, marker, marker.count) else {
+            return nil
         }
+        let start = base.distance(to: found.assumingMemoryBound(to: UInt8.self)) + marker.count
+        guard let end = buffer[start...].firstIndex(of: UInt8(ascii: "\"")) else { return nil }
+        return String(decoding: buffer[start..<end], as: UTF8.self)
     }
 
-    private static func signature(from value: JSONValue?) -> FieldSignature? {
-        guard case .object(let field)? = value, case .string(let role)? = field["role"] else { return nil }
-        var ancestors: [String] = []
-        if case .array(let items)? = field["ancestors"] {
-            ancestors = items.compactMap(string)
-        }
-        var isWeb = false
-        if case .bool(let web)? = field["web"] { isWeb = web }
+    private static func signature(from value: Any?) -> FieldSignature? {
+        guard let field = value as? [String: Any], let role = field["role"] as? String else { return nil }
         return FieldSignature(
             role: role,
-            subrole: field["subrole"].flatMap(string),
-            identifier: field["identifier"].flatMap(string),
-            descriptor: field["descriptor"].flatMap(string),
-            ancestorRoles: ancestors,
-            isInWebArea: isWeb
+            subrole: field["subrole"] as? String,
+            identifier: field["identifier"] as? String,
+            descriptor: field["descriptor"] as? String,
+            ancestorRoles: field["ancestors"] as? [String] ?? [],
+            isInWebArea: field["web"] as? Bool ?? false
         )
     }
 }
 
 extension UsageAnalyzer {
+    /// The lines of the usage log in the default folder.
+    @Sendable public static func linesOfUsageLog() -> [String] {
+        lines(inLogFiles: JSONLUsageLogger().logFiles())
+    }
+
     /// Reads the lines of the given log files, oldest first.
     public static func lines(inLogFiles files: [URL]) -> [String] {
         files.flatMap { url -> [String] in

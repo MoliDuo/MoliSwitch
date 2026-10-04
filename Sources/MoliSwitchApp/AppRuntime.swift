@@ -325,9 +325,7 @@ final class AppRuntime: ObservableObject {
         self.store = store
         self.commandStore = commandStore
         self.fieldStore = fieldStore
-        self.suggestionLinesProvider = suggestionLines ?? {
-            UsageAnalyzer.lines(inLogFiles: JSONLUsageLogger().logFiles())
-        }
+        self.suggestionLinesProvider = suggestionLines ?? UsageAnalyzer.linesOfUsageLog
         self.slashCommandAppStore = slashCommandAppStore
         self.shiftAppRuleStore = shiftAppRuleStore
         self.shiftExcludedAppStore = shiftExcludedAppStore
@@ -972,11 +970,12 @@ final class AppRuntime: ObservableObject {
     func refreshSuggestions() async {
         guard !isAnalyzing else { return }
         isAnalyzing = true
-        usageLogger.flush()
         let context = suggestionContext()
         let provider = suggestionLinesProvider
+        let logger = usageLogger
         let found = await Task.detached(priority: .utility) {
-            UsageAnalyzer().suggestions(fromLines: provider(), current: context)
+            logger.flush()
+            return UsageAnalyzer().suggestions(fromLines: provider(), current: context)
         }.value
         let dismissed = dismissedSuggestionIDs
         suggestions = found.filter { !dismissed.contains($0.id) }
