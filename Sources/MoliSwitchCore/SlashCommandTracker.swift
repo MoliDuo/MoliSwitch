@@ -37,12 +37,16 @@ public struct KeyDetail: Equatable, Sendable {
     }
 }
 
-/// What the key monitor passes on: a key pressed, or both Shift keys let go.
+/// What the key monitor passes on: a key pressed, both Shift keys let go, or
+/// a modifier key changed.
 public enum MonitoredKeyEvent: Equatable, Sendable {
     /// shifted is set when Shift is held without ⌘, ⌃ or ⌥. category is set
     /// for the keys that type a character. detail is only for the usage log.
     case keyDown(SlashCommandKey, shifted: Bool, category: ShiftKeyCategory? = nil, detail: KeyDetail? = nil)
     case shiftReleased
+    /// A modifier key (including Caps Lock) changed state, for the usage log.
+    /// flags are the modifiers held now; capsLock is the Caps Lock state.
+    case modifierChanged(keyCode: Int, flags: [String], capsLock: Bool)
 }
 
 /// Decides when a slash starts a command, which is typed with the English

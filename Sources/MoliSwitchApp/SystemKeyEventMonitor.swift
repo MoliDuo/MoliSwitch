@@ -115,6 +115,17 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
                 _ = handler?(.shiftReleased)
             }
             self.shiftDown = shiftDown
+            let flags = event.flags
+            var names = Self.modifierNames(flags)
+            if flags.contains(.maskAlphaShift) { names.append("caps") }
+            if flags.contains(.maskSecondaryFn) { names.append("fn") }
+            _ = handler?(
+                .modifierChanged(
+                    keyCode: Int(event.getIntegerValueField(.keyboardEventKeycode)),
+                    flags: names,
+                    capsLock: flags.contains(.maskAlphaShift)
+                )
+            )
             return false
         case .keyDown:
             break

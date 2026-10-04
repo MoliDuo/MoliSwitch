@@ -220,6 +220,7 @@ final class AppRuntime: ObservableObject {
     private let store: any RuleStore
     private let commandStore: any CommandRuleStore
     private let fieldStore: any FieldRuleStore
+    private let suggestionLinesProvider: @Sendable () -> [String]
     private let slashCommandAppStore: any SlashCommandAppStore
     private let shiftAppRuleStore: any ShiftAppRuleStore
     /// The applications where Shift did not switch, from before Shift had
@@ -251,12 +252,21 @@ final class AppRuntime: ObservableObject {
     /// The input source this app asked for last, to tell its own switches from
     /// the user's when the system reports a change.
     private var pendingSelfSwitch: (id: String, mono: Double)?
+    /// The previous change the user made, to tell a real switch from the
+    /// system reporting one toggle twice (there and straight back).
+    private var lastManualChange: (from: String?, to: String?, mono: Double)?
     private var fieldTextTask: Task<Void, Never>?
     private var lastLoggedFieldText: (identity: String, text: String)?
     private var lastFieldDetailsKey: String?
     private var lastFocusMono: Double?
     /// The input source the system reported last.
     private var lastObservedSourceID: String?
+    /// For the Caps Lock log: when a modifier last changed, when Caps Lock
+    /// last changed, and the readbacks still to come after the latest press.
+    private var lastModifierMono: Double?
+    private var lastCapsMono: Double?
+    private var recentCapsMonos: [Double] = []
+    private var capsReadbackTasks: [Task<Void, Never>] = []
     private var snapshotTask: Task<Void, Never>?
     private var terminalUnavailableLogged = false
 
@@ -307,6 +317,7 @@ final class AppRuntime: ObservableObject {
         inputSourceIndicator: any InputSourceIndicatorControlling = SystemInputSourceIndicator(),
         switchCounter: SwitchCounter = SwitchCounter(),
         usageLogger: any UsageLogging = JSONLUsageLogger(),
+        suggestionLines: (@Sendable () -> [String])? = nil,
         defaults: UserDefaults = .standard,
         updateController: UpdateController? = nil,
         ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
@@ -314,6 +325,9 @@ final class AppRuntime: ObservableObject {
         self.store = store
         self.commandStore = commandStore
         self.fieldStore = fieldStore
+        self.suggestionLinesProvider = suggestionLines ?? {
+            UsageAnalyzer.lines(inLogFiles: JSONLUsageLogger().logFiles())
+        }
         self.slashCommandAppStore = slashCommandAppStore
         self.shiftAppRuleStore = shiftAppRuleStore
         self.shiftExcludedAppStore = shiftExcludedAppStore
@@ -384,6 +398,7 @@ final class AppRuntime: ObservableObject {
         lastObservedSourceID = currentInputSource?.id
         logSnapshot("appStart")
         startSnapshotHeartbeat()
+        startSuggestionRefresh()
         reportLoginStatus()
         startMonitoring()
         updateController?.start()
@@ -398,6 +413,8 @@ final class AppRuntime: ObservableObject {
         logUsage("appStop")
         snapshotTask?.cancel()
         snapshotTask = nil
+        suggestionTask?.cancel()
+        suggestionTask = nil
         scanTask?.cancel()
         scanTask = nil
         isScanning = false
@@ -902,6 +919,168 @@ final class AppRuntime: ObservableObject {
         return nil
     }
 
+    // MARK: - Suggestions
+
+    private static let dismissedSuggestionsKey = "dismissedSuggestionIDs"
+    private static let appliedSuggestionsKey = "appliedSuggestions"
+
+    /// Rule changes the usage log suggests, which are only made when applied.
+    @Published private(set) var suggestions: [RuleSuggestion] = []
+    @Published private(set) var appliedSuggestions: [AppliedSuggestion] = []
+    @Published private(set) var isAnalyzing = false
+    @Published private(set) var lastAnalysisDate: Date?
+
+    private var suggestionTask: Task<Void, Never>?
+
+    private var dismissedSuggestionIDs: Set<String> {
+        get { Set(defaults.stringArray(forKey: Self.dismissedSuggestionsKey) ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: Self.dismissedSuggestionsKey) }
+    }
+
+    private func startSuggestionRefresh() {
+        appliedSuggestions = defaults.data(forKey: Self.appliedSuggestionsKey)
+            .flatMap { try? JSONDecoder().decode([AppliedSuggestion].self, from: $0) } ?? []
+        suggestionTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled, let self else { return }
+                await self.refreshSuggestions()
+                try? await Task.sleep(for: .seconds(6 * 3600))
+            }
+        }
+    }
+
+    private func suggestionContext() -> UsageAnalyzer.CurrentRules {
+        var targets: [String: String] = [:]
+        for rule in ruleSet.rules {
+            targets[rule.bundleIdentifier] = rule.inputSourceID == Self.noSwitchInputSourceID
+                ? rule.inputSourceID
+                : targetInputSourceID(forRuleID: rule.inputSourceID) ?? rule.inputSourceID
+        }
+        let defaultTarget = defaultInputSourceSelection == Self.noSwitchInputSourceID
+            ? nil
+            : targetInputSourceID(forRuleID: defaultInputSourceSelection)
+        return UsageAnalyzer.CurrentRules(
+            appTargets: targets,
+            defaultTarget: defaultTarget,
+            fieldRules: fieldRuleSet.rules,
+            inputSourceNames: Dictionary(inputSources.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        )
+    }
+
+    /// Reads the usage log in the background and updates the suggestions.
+    func refreshSuggestions() async {
+        guard !isAnalyzing else { return }
+        isAnalyzing = true
+        usageLogger.flush()
+        let context = suggestionContext()
+        let provider = suggestionLinesProvider
+        let found = await Task.detached(priority: .utility) {
+            UsageAnalyzer().suggestions(fromLines: provider(), current: context)
+        }.value
+        let dismissed = dismissedSuggestionIDs
+        suggestions = found.filter { !dismissed.contains($0.id) }
+        lastAnalysisDate = Date()
+        isAnalyzing = false
+        logUsage("suggestions", ["count": .int(suggestions.count), "ids": .strings(suggestions.map(\.id))])
+    }
+
+    func requestSuggestionRefresh() {
+        Task { await refreshSuggestions() }
+    }
+
+    func dismissSuggestion(_ suggestion: RuleSuggestion) {
+        dismissedSuggestionIDs.insert(suggestion.id)
+        suggestions.removeAll { $0.id == suggestion.id }
+    }
+
+    /// Makes the suggested change. Returns false when it could not be saved.
+    @discardableResult
+    func applySuggestion(_ suggestion: RuleSuggestion) -> Bool {
+        let change: AppliedSuggestion.Change
+        switch suggestion.action {
+        case .setAppRule(let bundleIdentifier, let applicationName, let inputSourceID):
+            guard ruleEditingEnabled,
+                  let target = ruleTarget(forPickerValue: roleOrID(inputSourceID))
+            else { return false }
+            let previous = ruleSet.rule(forBundleIdentifier: bundleIdentifier)
+            var candidate = ruleSet
+            candidate.upsert(
+                AppRule(
+                    bundleIdentifier: bundleIdentifier,
+                    applicationName: previous?.applicationName ?? applicationName,
+                    inputSourceID: target.id,
+                    inputSourceName: target.name
+                )
+            )
+            commit(candidate)
+            guard ruleSet == candidate else { return false }
+            change = .appRule(bundleIdentifier: bundleIdentifier, previous: previous)
+        case .addFieldRule(let bundleIdentifier, let applicationName, let signature, let inputSourceID):
+            guard fieldRuleEditingEnabled,
+                  let target = ruleTarget(forPickerValue: roleOrID(inputSourceID)),
+                  fieldRuleSet.rule(forBundleIdentifier: bundleIdentifier, matching: signature) == nil
+            else { return false }
+            let rule = FieldRule(
+                bundleIdentifier: bundleIdentifier,
+                applicationName: applicationName,
+                label: signature.suggestedLabel,
+                signature: signature,
+                inputSourceID: target.id,
+                inputSourceName: target.name
+            )
+            var candidate = fieldRuleSet
+            candidate.upsert(rule)
+            guard commitFieldRules(candidate) else { return false }
+            change = .fieldRule(id: rule.id)
+        }
+
+        appliedSuggestions.insert(
+            AppliedSuggestion(id: suggestion.id, title: suggestion.title, appliedAt: Date(), change: change),
+            at: 0
+        )
+        appliedSuggestions = Array(appliedSuggestions.prefix(20))
+        persistAppliedSuggestions()
+        suggestions.removeAll { $0.id == suggestion.id }
+        logUsage("ruleEdit", ["kind": "suggestion", "reason": "autoSuggestion", "id": .string(suggestion.id)])
+        return true
+    }
+
+    /// Puts back what a suggestion replaced.
+    func undoSuggestion(_ applied: AppliedSuggestion) {
+        switch applied.change {
+        case .appRule(let bundleIdentifier, let previous):
+            guard ruleEditingEnabled else { return }
+            var candidate = ruleSet
+            if let previous {
+                candidate.upsert(previous)
+            } else {
+                candidate.remove(bundleIdentifier: bundleIdentifier)
+            }
+            commit(candidate)
+        case .fieldRule(let id):
+            removeFieldRule(id)
+        }
+        appliedSuggestions.removeAll { $0.id == applied.id && $0.appliedAt == applied.appliedAt }
+        persistAppliedSuggestions()
+        logUsage("ruleEdit", ["kind": "suggestionUndo", "id": .string(applied.id)])
+        Task { await refreshSuggestions() }
+    }
+
+    /// A rule follows the Chinese or English role when the input source is
+    /// the one standing for it.
+    private func roleOrID(_ inputSourceID: String) -> String {
+        if inputSourceID == effectiveChineseInputSource?.id { return Self.chineseRuleID }
+        if inputSourceID == effectiveEnglishInputSource?.id { return Self.englishRuleID }
+        return inputSourceID
+    }
+
+    private func persistAppliedSuggestions() {
+        if let data = try? JSONEncoder().encode(appliedSuggestions) {
+            defaults.set(data, forKey: Self.appliedSuggestionsKey)
+        }
+    }
+
     // MARK: - Command rules
 
     /// Adds a rule for a program in the terminal. Returns false when the name is
@@ -1285,6 +1464,75 @@ final class AppRuntime: ObservableObject {
             return false
         case .keyDown(let key, let shifted, let category, let detail):
             return handleKeyDown(key, shifted: shifted, category: category, detail: detail)
+        case .modifierChanged(let keyCode, let flags, let capsLock):
+            handleModifierChanged(keyCode: keyCode, flags: flags, capsLock: capsLock)
+            return false
+        }
+    }
+
+    /// Logs every modifier change, and for Caps Lock reads the input source
+    /// back several times, to see whether and when the input method followed.
+    private func handleModifierChanged(keyCode: Int, flags: [String], capsLock: Bool) {
+        guard usageLogger.isEnabled else { return }
+        let mono = UsageEvent.currentMonotonicMilliseconds()
+        let isCapsKey = keyCode == 57
+        var fields: [String: JSONValue] = [
+            "keyCode": .int(keyCode),
+            "flags": .strings(flags),
+            "capsLock": .bool(capsLock),
+            "isCapsKey": .bool(isCapsKey),
+            "current": .optional(inputSourceManager.currentInputSource()?.id),
+        ]
+        if let lastModifierMono { fields["sinceModifierMs"] = .double(mono - lastModifierMono) }
+        lastModifierMono = mono
+        guard isCapsKey else {
+            logUsage("modifier", fields)
+            return
+        }
+
+        fields["details"] = .object(inputSourceManager.currentInputSourceDetails().mapValues(JSONValue.string))
+        if let lastCapsMono { fields["sinceLastCapsMs"] = .double(mono - lastCapsMono) }
+        if let pendingSelfSwitch {
+            fields["sinceOwnSwitchMs"] = .double(mono - pendingSelfSwitch.mono)
+        }
+        fields["shiftSwitched"] = .bool(shiftTracker.isSwitched)
+        fields["pressesIn3s"] = .int(recentCapsMonos.filter { mono - $0 < 3000 }.count + 1)
+        lastCapsMono = mono
+        recentCapsMonos = (recentCapsMonos + [mono]).suffix(5)
+        logUsage("capsLock", fields)
+        scheduleCapsReadback(startedAt: mono, capsLock: capsLock)
+    }
+
+    /// Reads the input source back after Caps Lock, 30 ms to 1 s later.
+    private func scheduleCapsReadback(startedAt mono: Double, capsLock: Bool) {
+        capsReadbackTasks.forEach { $0.cancel() }
+        let before = inputSourceManager.currentInputSource()?.id
+        let delays = [30, 100, 250, 500, 1000]
+        capsReadbackTasks = delays.map { delay in
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard !Task.isCancelled, let self else { return }
+                let actual = self.inputSourceManager.currentInputSource()?.id
+                self.logUsage(
+                    "capsReadback",
+                    [
+                        "afterMs": .int(delay), "actual": .optional(actual),
+                        "before": .optional(before), "changed": .bool(actual != before),
+                        "capsLock": .bool(capsLock), "capsAtMono": .double(mono),
+                        "details": .object(self.inputSourceManager.currentInputSourceDetails().mapValues(JSONValue.string)),
+                    ]
+                )
+                if delay == delays.last {
+                    self.logUsage(
+                        "capsSettled",
+                        [
+                            "before": .optional(before), "after": .optional(actual),
+                            "changed": .bool(actual != before), "capsAtMono": .double(mono),
+                            "lastChangeSeenBy": .optional(self.lastObservedSourceID),
+                        ]
+                    )
+                }
+            }
         }
     }
 
@@ -2230,6 +2478,8 @@ final class AppRuntime: ObservableObject {
             fields["sinceOwnSwitchMs"] = .double(mono - pendingSelfSwitch.mono)
             fields["ownSwitchTarget"] = .string(pendingSelfSwitch.id)
         }
+        if let lastCapsMono { fields["sinceCapsMs"] = .double(mono - lastCapsMono) }
+        if let lastModifierMono { fields["sinceModifierMs"] = .double(mono - lastModifierMono) }
         logUsage("systemInputSourceChanged", fields)
 
         guard !ownSwitch, previousID != now?.id else { return }
@@ -2240,6 +2490,11 @@ final class AppRuntime: ObservableObject {
             manual["sinceFocusMs"] = .double(mono - lastFocusMono)
         }
         manual["appliedRuleKey"] = .optional(appliedRuleKey)
+        if let last = lastManualChange, mono - last.mono < 150 {
+            manual["sincePreviousManualMs"] = .double(mono - last.mono)
+            manual["undoesPrevious"] = .bool(last.from == now?.id && last.to == previousID)
+        }
+        lastManualChange = (previousID, now?.id, mono)
         logUsage("manualSwitch", manual)
         logSnapshot("manualSwitch")
     }
@@ -2298,6 +2553,8 @@ final class AppRuntime: ObservableObject {
                 "slashState": .string(slashCommandTracker.stateDescription),
                 "shiftSwitched": .bool(shiftTracker.isSwitched),
                 "accessibility": .bool(accessibilityTrusted),
+                "capsLockOn": .bool(CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift)),
+                "recentCapsAgoMs": .array(recentCapsMonos.map { .double(UsageEvent.currentMonotonicMilliseconds() - $0) }),
                 "keyMonitorRunning": .bool(keyEventMonitor.isRunning),
                 "keyMonitoringUnavailable": .bool(keyMonitoringUnavailable),
                 "caretIndicator": .bool(inputSourceIndicatorEnabled),
@@ -2421,6 +2678,10 @@ final class AppRuntime: ObservableObject {
             "shifted": .bool(shifted),
             "category": .optional(category?.rawValue),
         ]
+        if let lastCapsMono {
+            let since = UsageEvent.currentMonotonicMilliseconds() - lastCapsMono
+            if since < 2000 { fields["sinceCapsMs"] = .double(since) }
+        }
         if let detail {
             fields["keyCode"] = .int(detail.keyCode)
             fields["mods"] = .strings(detail.modifiers)

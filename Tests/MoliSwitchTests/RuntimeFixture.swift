@@ -57,7 +57,8 @@ func makeFixture(
     sources: [InputSource] = TestInputSources.all,
     current: InputSource? = TestInputSources.us,
     scanDelay: TimeInterval = 0,
-    scanRootCount: Int = 1
+    scanRootCount: Int = 1,
+    suggestionLines: [String] = []
 ) -> RuntimeFixture {
     let suiteName = "MoliSwitchTests." + UUID().uuidString
     let defaults = UserDefaults(suiteName: suiteName) ?? .standard
@@ -109,6 +110,7 @@ func makeFixture(
         inputSourceIndicator: indicator,
         switchCounter: SwitchCounter(defaults: defaults),
         usageLogger: usage,
+        suggestionLines: { suggestionLines },
         defaults: defaults,
         updateController: nil,
         ownBundleIdentifier: "com.moli.MoliSwitch"

@@ -3,6 +3,7 @@ import SwiftUI
 enum SidebarItem: String, CaseIterable, Identifiable {
     case applications
     case automation
+    case suggestions
     case general
 
     var id: String { rawValue }
@@ -11,6 +12,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .applications: "应用"
         case .automation: "自动切换"
+        case .suggestions: "优化建议"
         case .general: "通用"
         }
     }
@@ -19,6 +21,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .applications: "square.grid.2x2"
         case .automation: "wand.and.stars"
+        case .suggestions: "lightbulb"
         case .general: "gearshape"
         }
     }
@@ -34,6 +37,8 @@ struct MainWindowView: View {
                 Section {
                     sidebarRow(.applications)
                     sidebarRow(.automation)
+                    sidebarRow(.suggestions)
+                        .badge(runtime.suggestions.count)
                 }
                 Section {
                     sidebarRow(.general)
@@ -75,6 +80,8 @@ struct MainWindowView: View {
             ApplicationsPage(runtime: runtime)
         case .automation:
             AutomationPage(runtime: runtime)
+        case .suggestions:
+            SuggestionsPage(runtime: runtime)
         case .general:
             GeneralPage(runtime: runtime)
         }

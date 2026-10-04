@@ -564,6 +564,11 @@ final class FakeKeyEventMonitor: KeyEventMonitoring {
         }
     }
 
+    /// Presses or releases a modifier key; keyCode 57 is Caps Lock.
+    func changeModifier(keyCode: Int, flags: [String] = [], capsLock: Bool = false) {
+        _ = handler?(.modifierChanged(keyCode: keyCode, flags: flags, capsLock: capsLock))
+    }
+
     /// Lets go of both Shift keys.
     func releaseShift() {
         _ = handler?(.shiftReleased)
