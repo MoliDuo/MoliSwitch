@@ -12,6 +12,29 @@ public struct RuleSuggestion: Identifiable, Equatable, Sendable {
             signature: FieldSignature,
             inputSourceID: String
         )
+        /// Use this input source while the program runs in the terminal.
+        case setCommandRule(command: String, inputSourceID: String)
+        /// Whether Shift with this key switches to English, in one application
+        /// or, without one, everywhere.
+        case setShiftKey(bundleIdentifier: String?, applicationName: String?, keyCode: Int, enabled: Bool)
+        /// Whether letting go of Shift switches back, in one application or everywhere.
+        case setShiftRestore(bundleIdentifier: String?, applicationName: String?, enabled: Bool)
+    }
+
+    /// What a suggestion changes, for showing them in groups.
+    public enum Kind: Int, CaseIterable, Comparable, Sendable {
+        case application, command, field, shift
+
+        public static func < (lhs: Kind, rhs: Kind) -> Bool { lhs.rawValue < rhs.rawValue }
+    }
+
+    public var kind: Kind {
+        switch action {
+        case .setAppRule: .application
+        case .setCommandRule: .command
+        case .addFieldRule: .field
+        case .setShiftKey, .setShiftRestore: .shift
+        }
     }
 
     /// Stable for the same suggestion, so a dismissed one stays dismissed.
@@ -36,6 +59,11 @@ public struct AppliedSuggestion: Codable, Equatable, Identifiable, Sendable {
         case appRule(bundleIdentifier: String, previous: AppRule?)
         /// The field rule that was added.
         case fieldRule(id: UUID)
+        /// The rule the program had before, if any.
+        case commandRule(command: String, previous: CommandRule?)
+        /// The Shift settings before: the application's own, if it had them,
+        /// or, without an application, the settings for everywhere.
+        case shiftOptions(bundleIdentifier: String?, previous: ShiftEnglishOptions?)
     }
 
     public var id: String

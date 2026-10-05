@@ -53,6 +53,27 @@ final class AppRuntimeTerminalCommandTests: XCTestCase {
         XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
     }
 
+    /// Over ssh the program named in the title comes first, and ssh's own
+    /// rule is used when the title names none.
+    @MainActor
+    func testProgramOverSSHIsFoundByTheTitle() async {
+        let fixture = makeTerminalFixture()
+        defer { fixture.runtime.stop() }
+        fixture.terminal.result = .found(
+            TerminalContext(tty: "/dev/ttys001", candidates: ["claude", "ssh"], remoteTitle: "✳ Claude Code")
+        )
+
+        fixture.runtime.applyRuleIfNeeded(for: terminalApp)
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
+        XCTAssertEqual(fixture.runtime.lastTerminalContext?.displayName, "claude（ssh）")
+
+        fixture.terminal.result = .found(
+            TerminalContext(tty: "/dev/ttys001", candidates: ["ssh"], remoteTitle: "me@host: ~")
+        )
+        await waitUntil { fixture.inputSources.current == TestInputSources.us }
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
+    }
+
     @MainActor
     func testActivatingTheTerminalUsesTheProgramInTheActiveTab() async {
         let fixture = makeTerminalFixture()

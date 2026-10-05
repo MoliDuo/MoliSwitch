@@ -251,12 +251,12 @@ private struct ShiftOptionsEditor: View {
                 Text("在这个 App 里按住 Shift 不切换输入法。")
                     .foregroundStyle(.secondary)
             case .custom:
-                ShiftCategoryToggles(categories: optionBinding(\.categories))
+                ShiftKeyPicker(keyCodes: optionBinding(\.keyCodes))
                 Toggle("松开 Shift 后切回原输入法", isOn: optionBinding(\.restoresOnRelease))
             }
         }
         .padding(16)
-        .frame(width: 300, alignment: .leading)
+        .frame(width: 360, alignment: .leading)
         .onAppear {
             switch runtime.shiftOptions(for: application) {
             case nil: mode = .followDefault

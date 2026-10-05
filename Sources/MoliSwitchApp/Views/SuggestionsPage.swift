@@ -1,8 +1,8 @@
 import MoliSwitchCore
 import SwiftUI
 
-/// Rule changes the usage log suggests. Nothing changes until one is applied,
-/// and an applied one can be undone.
+/// Rule changes the usage log suggests, in groups by what they change.
+/// Nothing changes until one is applied, and an applied one can be undone.
 struct SuggestionsPage: View {
     @ObservedObject var runtime: AppRuntime
 
@@ -13,20 +13,6 @@ struct SuggestionsPage: View {
                     Text(runtime.isAnalyzing ? "正在分析使用记录…" : "暂时没有建议。")
                         .foregroundStyle(.secondary)
                 }
-                ForEach(runtime.suggestions) { suggestion in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(suggestion.title).font(.headline)
-                        Text(suggestion.evidence)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        HStack {
-                            Button("应用") { runtime.applySuggestion(suggestion) }
-                                .buttonStyle(.borderedProminent)
-                            Button("忽略") { runtime.dismissSuggestion(suggestion) }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
             } header: {
                 HStack {
                     Text("建议")
@@ -35,7 +21,21 @@ struct SuggestionsPage: View {
                         .disabled(runtime.isAnalyzing)
                 }
             } footer: {
-                Text("只读取本机的使用记录，不会联网。应用前不会改动任何规则。")
+                Text(
+                    "只读取本机最近 \(UsageAnalyzer.analyzedDays) 天的使用记录，不会联网。"
+                        + "看的是每次进入 App 或终端程序时规则选得对不对，偶尔手动切换不会改规则。应用前不会改动任何规则。"
+                )
+            }
+
+            ForEach(RuleSuggestion.Kind.allCases, id: \.self) { kind in
+                let group = runtime.suggestions.filter { $0.kind == kind }
+                if !group.isEmpty {
+                    Section(kind.title) {
+                        ForEach(group) { suggestion in
+                            SuggestionRow(runtime: runtime, suggestion: suggestion)
+                        }
+                    }
+                }
             }
 
             if !runtime.appliedSuggestions.isEmpty {
@@ -57,5 +57,36 @@ struct SuggestionsPage: View {
         }
         .formStyle(.grouped)
         .onAppear { runtime.requestSuggestionRefresh() }
+    }
+}
+
+private struct SuggestionRow: View {
+    @ObservedObject var runtime: AppRuntime
+    let suggestion: RuleSuggestion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(suggestion.title).font(.headline)
+            Text(suggestion.evidence)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("应用") { runtime.applySuggestion(suggestion) }
+                    .buttonStyle(.borderedProminent)
+                Button("忽略") { runtime.dismissSuggestion(suggestion) }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private extension RuleSuggestion.Kind {
+    var title: String {
+        switch self {
+        case .application: "应用"
+        case .command: "终端程序"
+        case .field: "输入框"
+        case .shift: "Shift 按键"
+        }
     }
 }

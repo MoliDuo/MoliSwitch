@@ -10,9 +10,21 @@ struct TerminalContext: Equatable, Sendable {
     let tty: String
     /// Names the program may be known by, most specific first.
     let candidates: [String]
+    /// The title of the tab, kept when the program runs on another host and
+    /// was found by its title.
+    var remoteTitle: String? = nil
 
     var displayName: String {
-        candidates.first ?? ""
+        guard remoteTitle != nil, let first = candidates.first, let via = candidates.last, first != via else {
+            return candidates.first ?? ""
+        }
+        return "\(first)（\(via)）"
+    }
+
+    /// The title changes all the time, for example with a spinner, so it does
+    /// not make another context.
+    static func == (lhs: TerminalContext, rhs: TerminalContext) -> Bool {
+        lhs.tty == rhs.tty && lhs.candidates == rhs.candidates
     }
 }
 
@@ -57,9 +69,10 @@ final class SystemTerminalContextProvider: TerminalContextProviding {
 /// the main thread also handles every key press, so the terminal is polled
 /// from here. Everything but the queue is only touched on the queue.
 private final class TerminalTabInspector: @unchecked Sendable {
+    /// Statements returning the tty and the title of the active tab.
     private static let ttyScripts: [String: String] = [
-        "com.apple.Terminal": "tty of selected tab of front window",
-        "com.googlecode.iterm2": "tty of current session of current window",
+        "com.apple.Terminal": "tell selected tab of front window to return {tty, custom title}",
+        "com.googlecode.iterm2": "tell current session of current window to return {tty, name}",
     ]
 
     static func supportsTerminal(bundleIdentifier: String) -> Bool {
@@ -90,7 +103,7 @@ private final class TerminalTabInspector: @unchecked Sendable {
             return .unavailable
         }
 
-        guard let tty = activeTTY(bundleIdentifier: bundleIdentifier) else {
+        guard let (tty, title) = activeTab(bundleIdentifier: bundleIdentifier) else {
             return .unavailable
         }
         guard let program = foregroundProgram(onTTY: tty) else {
@@ -103,6 +116,14 @@ private final class TerminalTabInspector: @unchecked Sendable {
         {
             // A "tmux" rule still applies to panes whose program has no rule.
             return .found(TerminalContext(tty: pane, candidates: paneProgram.candidates + ["tmux"]))
+        }
+
+        // Over ssh the program is on the other host; its title may name it.
+        if RemoteTitleParser.isRemoteLogin(program.candidates), let title {
+            let remote = RemoteTitleParser.candidates(fromTitle: title)
+            if !remote.isEmpty {
+                return .found(TerminalContext(tty: tty, candidates: remote + program.candidates, remoteTitle: title))
+            }
         }
 
         return .found(TerminalContext(tty: tty, candidates: program.candidates))
@@ -134,7 +155,7 @@ private final class TerminalTabInspector: @unchecked Sendable {
         }
     }
 
-    private func activeTTY(bundleIdentifier: String) -> String? {
+    private func activeTab(bundleIdentifier: String) -> (tty: String, title: String?)? {
         guard let script = compiledScript(for: bundleIdentifier) else { return nil }
 
         var error: NSDictionary?
@@ -142,14 +163,16 @@ private final class TerminalTabInspector: @unchecked Sendable {
         let result = script.executeAndReturnError(&error)
         let elapsed = Diagnostics.milliseconds(since: start)
         Diagnostics.record(.terminal, .debug, "active tab of \(bundleIdentifier) asked in \(elapsed) ms")
-        guard error == nil, let tty = result?.stringValue, tty.hasPrefix("/dev/") else {
+        let tty = result?.numberOfItems ?? 0 > 0 ? result?.atIndex(1)?.stringValue : result?.stringValue
+        guard error == nil, let tty, tty.hasPrefix("/dev/") else {
             Diagnostics.record(
                 .terminal, .error,
                 "active tab of \(bundleIdentifier) unavailable: \(error?[NSAppleScript.errorMessage] as? String ?? "no tty in result"), \(elapsed) ms"
             )
             return nil
         }
-        return tty
+        let title = result?.numberOfItems ?? 0 > 1 ? result?.atIndex(2)?.stringValue : nil
+        return (tty, title)
     }
 
     private func compiledScript(for bundleIdentifier: String) -> OSAScript? {
@@ -160,7 +183,9 @@ private final class TerminalTabInspector: @unchecked Sendable {
 
         let source = """
             with timeout of 1 second
-                tell application id "\(bundleIdentifier)" to return \(expression)
+                tell application id "\(bundleIdentifier)"
+                    \(expression)
+                end tell
             end timeout
             """
         let script = OSAScript(source: source, from: nil, languageInstance: languageInstance, using: [])
