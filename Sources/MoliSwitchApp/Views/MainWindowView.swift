@@ -37,8 +37,7 @@ struct MainWindowView: View {
                 Section {
                     sidebarRow(.applications)
                     sidebarRow(.automation)
-                    sidebarRow(.suggestions)
-                        .badge(runtime.suggestions.count)
+                    sidebarRow(.suggestions, badge: runtime.suggestions.count)
                 }
                 Section {
                     sidebarRow(.general)
@@ -68,8 +67,11 @@ struct MainWindowView: View {
         )
     }
 
-    private func sidebarRow(_ item: SidebarItem) -> some View {
+    /// The tag has to be the outermost modifier: a list row whose tag sits
+    /// under another modifier, such as a badge, cannot be selected.
+    private func sidebarRow(_ item: SidebarItem, badge: Int = 0) -> some View {
         Label(item.title, systemImage: item.systemImage)
+            .badge(badge)
             .tag(item)
     }
 
