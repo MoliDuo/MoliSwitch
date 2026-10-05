@@ -38,12 +38,14 @@ public struct ShiftEnglishTracker: Equatable, Sendable {
     /// - Parameters:
     ///   - category: Which key was pressed, for the keys that type a character;
     ///     nil for every other key.
+    ///   - keyCode: The key code of the key, to look it up in the options.
     ///   - shifted: Whether Shift is held without ⌘, ⌃ or ⌥.
     ///   - currentID: The input source selected now.
     ///   - englishID: The English input source, if one is set up.
     ///   - options: What switches in the application in front.
     public mutating func handle(
         _ category: ShiftKeyCategory?,
+        keyCode: Int? = nil,
         shifted: Bool,
         currentID: String?,
         englishID: String?,
@@ -58,7 +60,7 @@ public struct ShiftEnglishTracker: Equatable, Sendable {
         guard
             shifted,
             let category,
-            options.categories.contains(category),
+            options.switches(keyCode: keyCode, category: category),
             let currentID,
             let englishID,
             currentID != englishID,

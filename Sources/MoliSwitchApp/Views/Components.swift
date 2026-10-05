@@ -113,46 +113,93 @@ extension ShiftKeyCategory {
 extension ShiftEnglishOptions {
     /// Which keys switch, in a few words.
     var summary: String {
-        if categories.isEmpty {
+        if switchesNothing {
             return "关闭"
         }
         if categories.count == ShiftKeyCategory.allCases.count {
             return "全部"
         }
-        return ShiftKeyCategory.allCases.filter(categories.contains).map(\.shortTitle).joined(separator: "、")
+        return ShiftKeyCategory.allCases.compactMap { category -> String? in
+            switch state(of: category) {
+            case .all: category.shortTitle
+            case .some: "\(category.shortTitle) \(ShiftKey.keyCodes(in: category).intersection(keyCodes).count) 个"
+            case .none: nil
+            }
+        }
+        .joined(separator: "、")
     }
 }
 
-/// A checkbox for each kind of key that may switch to English with Shift held.
-struct ShiftCategoryToggles: View {
-    @Binding var categories: Set<ShiftKeyCategory>
+/// The keys that may switch to English with Shift held: a checkbox for each
+/// kind of key, which chooses or clears all of them, and the keys themselves,
+/// laid out like the keyboard, to choose one by one.
+struct ShiftKeyPicker: View {
+    @Binding var keyCodes: Set<Int>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(ShiftKeyCategory.allCases, id: \.self) { category in
-                Toggle(isOn: binding(for: category)) {
-                    HStack(spacing: 6) {
-                        Text(category.title)
-                        Text(category.examples)
-                            .font(.body.monospaced())
-                            .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 14) {
+                ForEach(ShiftKeyCategory.allCases, id: \.self) { category in
+                    Toggle(sources: keyBindings(in: category), isOn: \.self) {
+                        Text(category.shortTitle)
                     }
+                    .toggleStyle(.checkbox)
+                    .help(category.title + "：" + category.examples)
                 }
-                .toggleStyle(.checkbox)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(ShiftKey.rows.enumerated()), id: \.offset) { index, row in
+                    HStack(spacing: 3) {
+                        ForEach(row) { key in
+                            KeyCap(key: key, isOn: binding(for: key.keyCode))
+                        }
+                    }
+                    // Like the keys of a keyboard, each row a little to the right.
+                    .padding(.leading, CGFloat(index) * 6)
+                }
             }
         }
     }
 
-    private func binding(for category: ShiftKeyCategory) -> Binding<Bool> {
+    private func binding(for keyCode: Int) -> Binding<Bool> {
         Binding(
-            get: { categories.contains(category) },
+            get: { keyCodes.contains(keyCode) },
             set: { isOn in
                 if isOn {
-                    categories.insert(category)
+                    keyCodes.insert(keyCode)
                 } else {
-                    categories.remove(category)
+                    keyCodes.remove(keyCode)
                 }
             }
         )
+    }
+
+    private func keyBindings(in category: ShiftKeyCategory) -> [Binding<Bool>] {
+        ShiftKey.all.filter { $0.category == category }.map { binding(for: $0.keyCode) }
+    }
+
+    private struct KeyCap: View {
+        let key: ShiftKey
+        @Binding var isOn: Bool
+
+        var body: some View {
+            Button {
+                isOn.toggle()
+            } label: {
+                Text(key.shifted)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(isOn ? Color.white : Color.primary)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(isOn ? Color.accentColor : Color.secondary.opacity(0.12))
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(ShiftKey.label(forKeyCode: key.keyCode) + (isOn ? "：切英文" : "：不切换"))
+            .accessibilityLabel(ShiftKey.label(forKeyCode: key.keyCode))
+            .accessibilityValue(isOn ? "切英文" : "不切换")
+        }
     }
 }

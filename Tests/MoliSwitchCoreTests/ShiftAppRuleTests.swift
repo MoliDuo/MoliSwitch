@@ -39,8 +39,23 @@ final class ShiftAppRuleTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(rules)
-        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains(#""categories":["letter","symbol"]"#))
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.contains(#""categories":["letter","symbol"]"#))
+        XCTAssertTrue(text.contains(#""keyCodes":[0,1,2,3,4,5,6,7,8,9,11,"#))
 
         XCTAssertEqual(try JSONDecoder().decode([ShiftAppRule].self, from: data), rules)
+    }
+
+    func testSingleKeysSurviveEncoding() throws {
+        let options = ShiftEnglishOptions(keyCodes: [44, 41], restoresOnRelease: true)
+        let data = try JSONEncoder().encode(options)
+        XCTAssertEqual(try JSONDecoder().decode(ShiftEnglishOptions.self, from: data), options)
+    }
+
+    func testOptionsSavedWithOnlyCategoriesAreRead() throws {
+        let data = Data(#"{"categories":["digit"],"restoresOnRelease":false}"#.utf8)
+        let options = try JSONDecoder().decode(ShiftEnglishOptions.self, from: data)
+        XCTAssertEqual(options, ShiftEnglishOptions(categories: [.digit], restoresOnRelease: false))
+        XCTAssertEqual(options.keyCodes, ShiftKey.keyCodes(in: .digit))
     }
 }

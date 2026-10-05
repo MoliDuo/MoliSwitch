@@ -19,7 +19,10 @@ final class AppRuntime: ObservableObject {
     static let shiftEnglishEnabledKey = "shiftEnglishEnabled"
     static let usageLoggingEnabledKey = "usageLoggingEnabled"
     static let shiftRestoresOnReleaseKey = "shiftRestoresOnRelease"
+    /// Read only, to carry the categories chosen before keys were chosen one
+    /// by one over into shiftEnglishKeyCodesKey.
     static let shiftEnglishCategoriesKey = "shiftEnglishCategories"
+    static let shiftEnglishKeyCodesKey = "shiftEnglishKeyCodes"
     /// Set once the applications where Shift did not switch were carried over
     /// into shift-app-rules.json.
     static let shiftExcludedAppsMigratedKey = "didMigrateShiftExcludedApps"
@@ -190,16 +193,13 @@ final class AppRuntime: ObservableObject {
     }
     /// The keys that switch to English with Shift held, in applications
     /// without a rule of their own.
-    @Published var shiftEnglishCategories: Set<ShiftKeyCategory> {
+    @Published var shiftEnglishKeyCodes: Set<Int> {
         didSet {
-            guard shiftEnglishCategories != oldValue else { return }
-            defaults.set(
-                ShiftKeyCategory.allCases.filter(shiftEnglishCategories.contains).map(\.rawValue),
-                forKey: Self.shiftEnglishCategoriesKey
-            )
+            guard shiftEnglishKeyCodes != oldValue else { return }
+            defaults.set(shiftEnglishKeyCodes.sorted(), forKey: Self.shiftEnglishKeyCodesKey)
             logUsage(
                 "setting",
-                ["name": "shiftEnglishCategories", "value": .strings(shiftEnglishCategories.map(\.rawValue).sorted())]
+                ["name": "shiftEnglishKeyCodes", "value": .array(shiftEnglishKeyCodes.sorted().map(JSONValue.int))]
             )
         }
     }
@@ -364,9 +364,14 @@ final class AppRuntime: ObservableObject {
         self.slashCommandTracker = SlashCommandTracker(restoresOnSpace: restoresOnSpace)
         self.shiftEnglishEnabled = defaults.bool(forKey: Self.shiftEnglishEnabledKey)
         self.shiftRestoresOnRelease = defaults.object(forKey: Self.shiftRestoresOnReleaseKey) as? Bool ?? true
-        self.shiftEnglishCategories = (defaults.stringArray(forKey: Self.shiftEnglishCategoriesKey))
-            .map { Set($0.compactMap(ShiftKeyCategory.init(rawValue:))) }
-            ?? Set(ShiftKeyCategory.allCases)
+        if let keyCodes = defaults.array(forKey: Self.shiftEnglishKeyCodesKey) as? [Int] {
+            self.shiftEnglishKeyCodes = Set(keyCodes)
+        } else {
+            let categories = defaults.stringArray(forKey: Self.shiftEnglishCategoriesKey)
+                .map { Set($0.compactMap(ShiftKeyCategory.init(rawValue:))) }
+                ?? Set(ShiftKeyCategory.allCases)
+            self.shiftEnglishKeyCodes = ShiftEnglishOptions(categories: categories, restoresOnRelease: true).keyCodes
+        }
         self.accessibilityTrusted = focusedFieldProvider.isTrusted
         self.switchCount = switchCounter.count
         self.launchAtLoginStatus = loginItemManager.status
@@ -958,10 +963,23 @@ final class AppRuntime: ObservableObject {
         let defaultTarget = defaultInputSourceSelection == Self.noSwitchInputSourceID
             ? nil
             : targetInputSourceID(forRuleID: defaultInputSourceSelection)
+        var commandTargets: [String: String] = [:]
+        for rule in commandRuleSet.rules {
+            commandTargets[CommandRuleSet.matchKey(rule.command)] =
+                targetInputSourceID(forRuleID: rule.inputSourceID) ?? rule.inputSourceID
+        }
         return UsageAnalyzer.CurrentRules(
             appTargets: targets,
             defaultTarget: defaultTarget,
             fieldRules: fieldRuleSet.rules,
+            commandTargets: commandTargets,
+            commandRulesEnabled: terminalSwitchingEnabled,
+            shiftEnabled: shiftEnglishEnabled,
+            globalShift: globalShiftOptions,
+            shiftAppRules: Dictionary(
+                shiftAppRules.rules.map { ($0.bundleIdentifier, $0.options) },
+                uniquingKeysWith: { first, _ in first }
+            ),
             inputSourceNames: Dictionary(inputSources.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         )
     }
@@ -1032,6 +1050,28 @@ final class AppRuntime: ObservableObject {
             candidate.upsert(rule)
             guard commitFieldRules(candidate) else { return false }
             change = .fieldRule(id: rule.id)
+        case .setCommandRule(let command, let inputSourceID):
+            let name = CommandRuleSet.normalizedCommand(command)
+            guard commandRuleEditingEnabled, !name.isEmpty,
+                  let target = ruleTarget(forPickerValue: roleOrID(inputSourceID))
+            else { return false }
+            let previous = commandRuleSet.rule(forCommand: name)
+            var candidate = commandRuleSet
+            candidate.upsert(
+                CommandRule(command: previous?.command ?? name, inputSourceID: target.id, inputSourceName: target.name)
+            )
+            guard commitCommandRules(candidate) else { return false }
+            change = .commandRule(command: name, previous: previous)
+        case .setShiftKey(let bundleIdentifier, let applicationName, let keyCode, let enabled):
+            guard let previous = changeShiftOptions(bundleIdentifier: bundleIdentifier, applicationName: applicationName, {
+                $0.set(keyCode: keyCode, on: enabled)
+            }) else { return false }
+            change = .shiftOptions(bundleIdentifier: bundleIdentifier, previous: previous)
+        case .setShiftRestore(let bundleIdentifier, let applicationName, let enabled):
+            guard let previous = changeShiftOptions(bundleIdentifier: bundleIdentifier, applicationName: applicationName, {
+                $0.restoresOnRelease = enabled
+            }) else { return false }
+            change = .shiftOptions(bundleIdentifier: bundleIdentifier, previous: previous)
         }
 
         appliedSuggestions.insert(
@@ -1059,11 +1099,56 @@ final class AppRuntime: ObservableObject {
             commit(candidate)
         case .fieldRule(let id):
             removeFieldRule(id)
+        case .commandRule(let command, let previous):
+            guard commandRuleEditingEnabled else { return }
+            var candidate = commandRuleSet
+            if let previous {
+                candidate.upsert(previous)
+            } else {
+                candidate.remove(command: command)
+            }
+            if candidate != commandRuleSet {
+                commitCommandRules(candidate)
+            }
+        case .shiftOptions(let bundleIdentifier, let previous):
+            if let bundleIdentifier {
+                let name = shiftAppRules.rule(for: bundleIdentifier)?.applicationName ?? bundleIdentifier
+                setShiftOptions(previous, bundleIdentifier: bundleIdentifier, applicationName: name)
+            } else if let previous {
+                shiftEnglishKeyCodes = previous.keyCodes
+                shiftRestoresOnRelease = previous.restoresOnRelease
+            }
         }
         appliedSuggestions.removeAll { $0.id == applied.id && $0.appliedAt == applied.appliedAt }
         persistAppliedSuggestions()
         logUsage("ruleEdit", ["kind": "suggestionUndo", "id": .string(applied.id)])
         Task { await refreshSuggestions() }
+    }
+
+    /// Changes the Shift settings of an application, starting from the ones
+    /// it uses now, or without one the settings for everywhere. Returns what
+    /// is needed to undo it: the settings before, the application's own or
+    /// nil when it had none; or nil, nil when nothing was saved.
+    private func changeShiftOptions(
+        bundleIdentifier: String?,
+        applicationName: String?,
+        _ change: (inout ShiftEnglishOptions) -> Void
+    ) -> ShiftEnglishOptions?? {
+        guard let bundleIdentifier else {
+            let previous = globalShiftOptions
+            var options = previous
+            change(&options)
+            shiftEnglishKeyCodes = options.keyCodes
+            shiftRestoresOnRelease = options.restoresOnRelease
+            return .some(previous)
+        }
+        let previous = shiftAppRules.rule(for: bundleIdentifier)?.options
+        var options = previous ?? globalShiftOptions
+        change(&options)
+        guard setShiftOptions(options, bundleIdentifier: bundleIdentifier, applicationName: applicationName ?? bundleIdentifier) else {
+            return nil
+        }
+        return .some(previous)
     }
 
     /// A rule follows the Chinese or English role when the input source is
@@ -1368,7 +1453,7 @@ final class AppRuntime: ObservableObject {
 
     /// What applications without a rule of their own use.
     var globalShiftOptions: ShiftEnglishOptions {
-        ShiftEnglishOptions(categories: shiftEnglishCategories, restoresOnRelease: shiftRestoresOnRelease)
+        ShiftEnglishOptions(keyCodes: shiftEnglishKeyCodes, restoresOnRelease: shiftRestoresOnRelease)
     }
 
     /// The application's own Shift settings, or nil when it uses globalShiftOptions.
@@ -1379,33 +1464,37 @@ final class AppRuntime: ObservableObject {
     /// Gives the application its own Shift settings, or with nil makes it use
     /// globalShiftOptions again.
     func setShiftOptions(_ options: ShiftEnglishOptions?, for application: InstalledApplication) {
+        setShiftOptions(options, bundleIdentifier: application.bundleIdentifier, applicationName: application.name)
+    }
+
+    /// Returns false when the settings could not be saved.
+    @discardableResult
+    func setShiftOptions(_ options: ShiftEnglishOptions?, bundleIdentifier: String, applicationName: String) -> Bool {
         guard shiftAppRuleEditingEnabled else {
             storageStatus = .shiftAppRulesReadFailure
-            return
+            return false
         }
 
         var candidate = shiftAppRules
         if let options {
             candidate.set(
-                ShiftAppRule(
-                    bundleIdentifier: application.bundleIdentifier,
-                    applicationName: application.name,
-                    options: options
-                )
+                ShiftAppRule(bundleIdentifier: bundleIdentifier, applicationName: applicationName, options: options)
             )
         } else {
-            candidate.remove(bundleIdentifier: application.bundleIdentifier)
+            candidate.remove(bundleIdentifier: bundleIdentifier)
         }
-        guard candidate != shiftAppRules else { return }
+        guard candidate != shiftAppRules else { return true }
 
         do {
             try shiftAppRuleStore.save(candidate.rules)
             shiftAppRules = candidate
             storageStatus = .rulesSaved
             logUsage("ruleEdit", ["kind": "shift", "ok": true, "count": .int(candidate.rules.count)])
+            return true
         } catch {
             logUsage("ruleEdit", ["kind": "shift", "ok": false, "error": .string("\(error)")])
             storageStatus = .rulesSaveFailure
+            return false
         }
     }
 
@@ -1563,6 +1652,7 @@ final class AppRuntime: ObservableObject {
         if shiftTracker.isSwitched || options != nil {
             shiftDecision = shiftTracker.handle(
                 category,
+                keyCode: detail?.keyCode,
                 shifted: shifted,
                 currentID: currentID,
                 englishID: effectiveEnglishInputSource?.id,
@@ -2561,6 +2651,7 @@ final class AppRuntime: ObservableObject {
                 "settings": .object([
                     "shiftEnabled": .bool(shiftEnglishEnabled),
                     "shiftCategories": .strings(options.categories.map(\.rawValue).sorted()),
+                    "shiftKeyCodes": .array(options.keyCodes.sorted().map(JSONValue.int)),
                     "shiftRestores": .bool(options.restoresOnRelease),
                     "slashEnabled": .bool(slashCommandSwitchingEnabled),
                     "slashRestoresOnSpace": .bool(slashCommandRestoresOnSpace),
@@ -2736,7 +2827,9 @@ final class AppRuntime: ObservableObject {
 
     private static func jsonValue(of context: TerminalContext?) -> JSONValue {
         guard let context else { return .null }
-        return .object(["tty": .string(context.tty), "candidates": .strings(context.candidates)])
+        var object: [String: JSONValue] = ["tty": .string(context.tty), "candidates": .strings(context.candidates)]
+        if let title = context.remoteTitle { object["title"] = .string(title) }
+        return .object(object)
     }
 
     private static func environmentFields() -> [String: JSONValue] {

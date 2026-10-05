@@ -75,7 +75,7 @@ struct AutomationPage: View {
         Section {
             Toggle("按住 Shift 时打英文", isOn: $runtime.shiftEnglishEnabled)
             LabeledContent("切英文的按键") {
-                ShiftCategoryToggles(categories: $runtime.shiftEnglishCategories)
+                ShiftKeyPicker(keyCodes: $runtime.shiftEnglishKeyCodes)
             }
             .disabled(!runtime.shiftEnglishEnabled)
             Toggle("松开 Shift 后切回原输入法", isOn: $runtime.shiftRestoresOnRelease)
@@ -90,8 +90,9 @@ struct AutomationPage: View {
             Text("按住 Shift")
         } footer: {
             SectionFooter(
-                "用中文输入法时，按住 Shift 打勾选的这几类键，会先切到英文再打出来。"
-                    + "比如只勾“字母”，Shift + A 打出 A，Shift + 1 仍是中文的“！”。"
+                "用中文输入法时，按住 Shift 打选中的键（蓝色），会先切到英文再打出来。"
+                    + "上面的勾选框一次选中或取消一类键，下面的键可以一个一个点。"
+                    + "比如只选 ?，Shift + / 打出 ?，Shift + ; 仍是中文的“：”。"
                     + "按住 Shift 时第一个要切的键切到英文，之后到松开 Shift 打的都是英文。"
                     + "松开 Shift 后切回原来的输入法；关掉“松开 Shift 后切回原输入法”的话，就一直用英文，要自己切回。"
                     + "只按 Shift，或者 Shift 加回车、Tab、空格、方向键，不会切换。"
@@ -160,7 +161,8 @@ struct AutomationPage: View {
             SectionFooter(
                 "运行下面的程序时切到对应输入法，退出后回到终端应用自己的设置。"
                     + "按程序名匹配（不区分大小写），tmux 里的程序也能识别；"
-                    + "ssh 远程运行的程序无法识别，只能给 ssh 整体设置。"
+                    + "ssh 到远程机器时，按标签页标题认出远端的程序（Claude Code、vim，以及会把命令写进标题的 shell 都会设置标题），"
+                    + "认不出来时按 ssh 的设置。"
                     + "第一次使用时系统会请求“自动化”权限。"
             )
         }
@@ -213,11 +215,11 @@ struct AutomationPage: View {
             }
 
             if let context = runtime.lastTerminalContext,
-               !context.displayName.isEmpty,
+               let command = context.candidates.first,
                runtime.commandRuleSet.rule(matchingAnyOf: context.candidates) == nil
             {
                 Button("添加刚才在终端中运行的“" + context.displayName + "”") {
-                    runtime.addCommandRule(context.displayName)
+                    runtime.addCommandRule(command)
                 }
                 .buttonStyle(.link)
             }

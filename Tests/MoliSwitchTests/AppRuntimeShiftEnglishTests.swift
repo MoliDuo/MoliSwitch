@@ -133,8 +133,11 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
     @MainActor
     func testCategoriesNotChosenAreLeftAlone() async {
         let fixture = makeShiftFixture()
-        fixture.runtime.shiftEnglishCategories = [.letter]
-        XCTAssertEqual(fixture.defaults.stringArray(forKey: AppRuntime.shiftEnglishCategoriesKey), ["letter"])
+        fixture.runtime.shiftEnglishKeyCodes = ShiftKey.keyCodes(in: .letter)
+        XCTAssertEqual(
+            (fixture.defaults.array(forKey: AppRuntime.shiftEnglishKeyCodesKey) as? [Int]).map(Set.init),
+            ShiftKey.keyCodes(in: .letter)
+        )
 
         fixture.keys.press(.printable, shifted: true, category: .digit)
         XCTAssertEqual(fixture.keys.typedKeys, [.printable])
@@ -145,10 +148,32 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
     }
 
     @MainActor
-    func testCategoriesAreReadFromDefaults() {
+    func testKeysAreReadFromDefaults() {
+        let fixture = makeFixture(defaultsValues: [AppRuntime.shiftEnglishKeyCodesKey: [44, 41]])
+        XCTAssertEqual(fixture.runtime.shiftEnglishKeyCodes, [44, 41])
+        XCTAssertEqual(makeFixture().runtime.shiftEnglishKeyCodes, ShiftEnglishOptions.all.keyCodes)
+    }
+
+    @MainActor
+    func testCategoriesSavedBeforeAreCarriedOver() {
         let fixture = makeFixture(defaultsValues: [AppRuntime.shiftEnglishCategoriesKey: ["digit", "symbol"]])
-        XCTAssertEqual(fixture.runtime.shiftEnglishCategories, [.digit, .symbol])
-        XCTAssertEqual(makeFixture().runtime.shiftEnglishCategories, Set(ShiftKeyCategory.allCases))
+        XCTAssertEqual(fixture.runtime.globalShiftOptions.categories, [.digit, .symbol])
+        XCTAssertEqual(
+            fixture.runtime.shiftEnglishKeyCodes,
+            ShiftKey.keyCodes(in: .digit).union(ShiftKey.keyCodes(in: .symbol))
+        )
+    }
+
+    @MainActor
+    func testSingleKeySwitchesByItsKeyCode() {
+        let fixture = makeShiftFixture()
+        fixture.runtime.shiftEnglishKeyCodes = [44]
+
+        fixture.keys.press(.printable, shifted: true, category: .symbol, detail: KeyDetail(keyCode: 41, characters: ";"))
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
+
+        fixture.keys.press(.printable, shifted: true, category: .symbol, detail: KeyDetail(keyCode: 44, characters: "/"))
+        XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
     }
 
     @MainActor

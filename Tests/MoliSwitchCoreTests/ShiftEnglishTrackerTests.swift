@@ -74,6 +74,68 @@ final class ShiftEnglishTrackerTests: XCTestCase {
         XCTAssertTrue(tracker.isSwitched)
     }
 
+    func testKeysAreChosenOneByOne() {
+        // Only Shift + / (?) of the symbols.
+        let question = ShiftEnglishOptions(keyCodes: [44], restoresOnRelease: true)
+        var tracker = ShiftEnglishTracker()
+
+        XCTAssertEqual(
+            tracker.handle(.symbol, keyCode: 41, shifted: true, currentID: chinese, englishID: english, options: question),
+            .pass
+        )
+        XCTAssertEqual(
+            tracker.handle(.symbol, keyCode: 44, shifted: true, currentID: chinese, englishID: english, options: question),
+            .switchToEnglish(englishID: english)
+        )
+    }
+
+    func testKeysNotInTheTableFollowTheirCategory() {
+        // 10 is the extra key of ISO keyboards, next to the left Shift.
+        var tracker = ShiftEnglishTracker()
+        let someSymbols = ShiftEnglishOptions(keyCodes: [44], restoresOnRelease: true)
+        XCTAssertEqual(
+            tracker.handle(.symbol, keyCode: 10, shifted: true, currentID: chinese, englishID: english, options: someSymbols),
+            .pass
+        )
+        let allSymbols = ShiftEnglishOptions(categories: [.symbol], restoresOnRelease: true)
+        XCTAssertEqual(
+            tracker.handle(.symbol, keyCode: 10, shifted: true, currentID: chinese, englishID: english, options: allSymbols),
+            .switchToEnglish(englishID: english)
+        )
+    }
+
+    func testKeypadDigitsCountAsTheNumberRow() {
+        let one = ShiftEnglishOptions(keyCodes: [18], restoresOnRelease: true)
+        XCTAssertTrue(one.switches(keyCode: 83, category: .digit))
+        XCTAssertFalse(one.switches(keyCode: 84, category: .digit))
+    }
+
+    func testCategoryStates() {
+        var options = ShiftEnglishOptions(categories: [.letter], restoresOnRelease: true)
+        XCTAssertEqual(options.state(of: .letter), .all)
+        XCTAssertEqual(options.state(of: .symbol), .none)
+        XCTAssertEqual(options.categories, [.letter])
+
+        options.set(keyCode: 44, on: true)
+        XCTAssertEqual(options.state(of: .symbol), .some)
+        XCTAssertEqual(options.categories, [.letter])
+
+        options.set(.symbol, on: true)
+        XCTAssertEqual(options.categories, [.letter, .symbol])
+        options.set(keyCode: 0, on: false)
+        XCTAssertEqual(options.state(of: .letter), .some)
+        XCTAssertEqual(options.categories, [.symbol])
+    }
+
+    func testEveryKeyIsInTheTableOnce() {
+        XCTAssertEqual(ShiftKey.all.count, 47)
+        XCTAssertEqual(Set(ShiftKey.all.map(\.keyCode)).count, 47)
+        XCTAssertEqual(ShiftKey.keyCodes(in: .letter).count, 26)
+        XCTAssertEqual(ShiftKey.keyCodes(in: .digit).count, 10)
+        XCTAssertEqual(ShiftKey.label(forKeyCode: 44), "Shift + /（?）")
+        XCTAssertEqual(ShiftKey.label(forKeyCode: 0), "Shift + A")
+    }
+
     func testNothingSwitchesWhenOff() {
         var tracker = ShiftEnglishTracker()
         for category in ShiftKeyCategory.allCases {
