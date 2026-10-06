@@ -1,8 +1,6 @@
 # Sparkle Ed25519 公钥（44 个字符的 base64，对应 32 字节）。
 #
-# 一次性生成方法见 Scripts/setup-sparkle-keys.sh，以及 README 的“自动更新与签名”一节。
-# 私钥保存在 GitHub Actions secret SPARKLE_PRIVATE_KEY 中，并在离线介质另外备份。
-#
-# 公钥可以公开、可以提交。私钥只保存在 GitHub Actions secret SPARKLE_PRIVATE_KEY 中，
-# 并已在离线介质另行备份；Scripts/build-app.sh 会在公钥缺失或仍是占位符时拒绝打包。
-Zsxi/uz/1095F9/i4D/Y+1Eqc33fB99NHJZXvH2BbJE=
+# 这是 MoliDuo 组织所有 Mac 应用共用的一对更新签名密钥里的公钥（MoliSpec 规范 007 的 7.5.3）。
+# 公钥可以公开、可以提交。私钥只保存在 GitHub 组织密钥 SPARKLE_PRIVATE_KEY 中，
+# 并在管理员的密码库里另行备份；Scripts/build-app.sh 会在公钥缺失或仍是占位符时拒绝打包。
+ko0IedgF7YYcB1vkH6XO+7DQw9KjypwXSfC48KaumyQ=

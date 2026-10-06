@@ -61,7 +61,7 @@ PUBLIC_KEY="$(sed -e 's/#.*$//' "$PUBLIC_KEY_FILE" | tr -d '[:space:]' | head -n
 
 case "$PUBLIC_KEY" in
     "" | REPLACE*)
-        fail "Config/SparklePublicKey.txt 仍是占位公钥；请先按 README 的\"一次性生成 Sparkle 密钥\"章节完成配置。"
+        fail "Config/SparklePublicKey.txt 仍是占位公钥；请先按 README 的\"Sparkle 密钥\"章节写入组织共用的公钥。"
         ;;
 esac
 

@@ -69,8 +69,8 @@ jobs:
           set -euo pipefail
           if grep -qE 'REPLACE_WITH_SPARKLE_ED25519_PUBLIC_KEY' Config/SparklePublicKey.txt; then
             echo "Config/SparklePublicKey.txt 仍是占位公钥，无法产出可自动更新的安装包。" >&2
-            echo "请在开发者本机执行 Scripts/setup-sparkle-keys.sh，提交真实公钥后再构建。" >&2
-            echo "详见 README 的「一次性生成 Sparkle 密钥」一节。" >&2
+            echo "请把组织共用的 Sparkle 公钥写入 Config/SparklePublicKey.txt 后再构建。" >&2
+            echo "详见 README 的「Sparkle 密钥」一节。" >&2
             exit 1
           fi
 

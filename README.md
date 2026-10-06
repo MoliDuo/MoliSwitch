@@ -216,30 +216,18 @@ swift test
 
 `verify-package.sh` 会检查：双架构、最低系统版本、Sparkle.framework 与辅助进程是否完整、签名是否有效、bundle 内是否残留指向 `.build` 的绝对加载路径、ZIP 与 DMG 是否包含同一份应用。设置 `REQUIRE_SIGNING_CERTIFICATE=1` 时还会要求应用、Sparkle.framework 及其辅助进程都由 `Config/CodeSigningCertificate.txt` 记录的证书签名（CI 发布构建即如此）。
 
-## 一次性生成 Sparkle 密钥
+## Sparkle 密钥
 
 更新信任只依赖一对 Ed25519 密钥：公钥随应用发布，私钥只用于签名更新包与更新清单。
 
-```bash
-# SPARKLE_TOOLS_DIR 指向含 bin/generate_keys 的 Sparkle 工具目录
-SPARKLE_TOOLS_DIR=.build/artifacts/sparkle/Sparkle/bin \
-  ./Scripts/setup-sparkle-keys.sh "$HOME/MoliSwitch-sparkle-private-key.txt"
-```
+这对密钥由 MoliDuo 组织里所有 Mac 应用共用（MoliSpec 规范 007 的 7.5.3），本仓库不再单独生成：
 
-脚本会：
-
-1. 生成（或复用）密钥对，并把公钥写入 `Config/SparklePublicKey.txt`；
-2. 把私钥导出到你指定的新路径（权限 `600`）。
-
-然后：
-
-1. 在仓库的 Actions secrets 里新增 `SPARKLE_PRIVATE_KEY`，内容就是导出的私钥全文；
-2. 把私钥复制到离线介质另行备份，然后从本机删除；
-3. 提交 `Config/SparklePublicKey.txt`。
+- 私钥是组织密钥 `SPARKLE_PRIVATE_KEY`，发布流水线直接读取；管理员的密码库里另有备份。
+- 公钥写在 `Config/SparklePublicKey.txt`，与组织其他 Mac 应用里的公钥相同。
 
 注意：
 
-- 不要在 CI 里生成新密钥；每次发布都必须用同一把密钥。私钥不进入源码、日志和构建产物。
+- 不要在 CI 或本机生成新密钥；每次发布都必须用同一把密钥。私钥不进入源码、日志和构建产物。
 - 私钥丢失后，已发布的版本无法再自动更新，用户只能重新手动安装。
 - `Config/SparklePublicKey.txt` 仍是占位值时，`build-app.sh` 会拒绝打包：无法验证更新的安装包不该发布。
 
