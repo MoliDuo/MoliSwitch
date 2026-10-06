@@ -10,16 +10,26 @@ struct ApplicationsPage: View {
     @AppStorage("showsApplicationInspector") private var showsInspector = true
 
     var body: some View {
-        VStack(spacing: 0) {
-            inputSourceHeader
-            Divider()
-            content
+        // Not `.inspector`: on macOS 27 the pickers above the table made its
+        // split view and the window's split view resize each other until
+        // AppKit gave up and crashed. Fixed minimum sizes keep the size of
+        // the page independent of what is on it.
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                inputSourceHeader
+                Divider()
+                content
+            }
+            .frame(minWidth: 420, maxWidth: .infinity, minHeight: 300, maxHeight: .infinity)
+
+            if showsInspector {
+                Divider()
+                ApplicationInspector(runtime: runtime, application: selectedApplication, icons: icons)
+                    .frame(width: 320)
+                    .frame(maxHeight: .infinity)
+            }
         }
         .searchable(text: $runtime.searchText, placement: .toolbar, prompt: "搜索应用")
-        .inspector(isPresented: $showsInspector) {
-            ApplicationInspector(runtime: runtime, application: selectedApplication, icons: icons)
-                .inspectorColumnWidth(min: 300, ideal: 340, max: 420)
-        }
         .toolbar {
             ToolbarItem {
                 Picker("显示", selection: $runtime.applicationListScope) {
@@ -73,6 +83,11 @@ struct ApplicationsPage: View {
                     defaultPicker
                     rolePickers
                 }
+                VStack(alignment: .leading, spacing: 8) {
+                    defaultPicker
+                    chinesePicker
+                    englishPicker
+                }
             }
             Text("没有单独设置的应用使用默认输入法；规则选“中文”“英文”时，切到这里选的输入法。")
                 .font(.caption)
@@ -97,24 +112,31 @@ struct ApplicationsPage: View {
 
     private var rolePickers: some View {
         HStack(spacing: 20) {
-            InputSourcePicker(
-                title: "中文",
-                selection: $runtime.chineseInputSourceSelection,
-                fixedChoices: [automaticChoice(detected: runtime.detectedChineseInputSource)],
-                otherChoices: runtime.chineseInputSourceChoices
-            )
-            .fixedSize()
-            .help("列表里没有你的输入法？先在 系统设置 › 键盘 › 输入法 中添加。")
-
-            InputSourcePicker(
-                title: "英文",
-                selection: $runtime.englishInputSourceSelection,
-                fixedChoices: [automaticChoice(detected: runtime.detectedEnglishInputSource)],
-                otherChoices: runtime.englishInputSourceChoices
-            )
-            .fixedSize()
-            .help("列表里没有你的输入法？先在 系统设置 › 键盘 › 输入法 中添加。")
+            chinesePicker
+            englishPicker
         }
+    }
+
+    private var chinesePicker: some View {
+        InputSourcePicker(
+            title: "中文",
+            selection: $runtime.chineseInputSourceSelection,
+            fixedChoices: [automaticChoice(detected: runtime.detectedChineseInputSource)],
+            otherChoices: runtime.chineseInputSourceChoices
+        )
+        .fixedSize()
+        .help("列表里没有你的输入法？先在 系统设置 › 键盘 › 输入法 中添加。")
+    }
+
+    private var englishPicker: some View {
+        InputSourcePicker(
+            title: "英文",
+            selection: $runtime.englishInputSourceSelection,
+            fixedChoices: [automaticChoice(detected: runtime.detectedEnglishInputSource)],
+            otherChoices: runtime.englishInputSourceChoices
+        )
+        .fixedSize()
+        .help("列表里没有你的输入法？先在 系统设置 › 键盘 › 输入法 中添加。")
     }
 
     private func automaticChoice(detected: InputSource?) -> InputSourceChoice {

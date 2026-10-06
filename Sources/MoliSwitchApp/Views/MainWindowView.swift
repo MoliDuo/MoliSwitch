@@ -54,7 +54,7 @@ struct MainWindowView: View {
                     notices
                 }
         }
-        .frame(minWidth: 900, minHeight: 520)
+        .frame(minWidth: 960, minHeight: 520)
         .onAppear(perform: refresh)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // The user may come back from System Settings having changed something.
