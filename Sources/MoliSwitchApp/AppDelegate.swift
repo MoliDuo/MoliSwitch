@@ -190,7 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             let controller = NSHostingController(rootView: MainWindowView(runtime: runtime))
             controller.sceneBridgingOptions = [.toolbars, .title]
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 820, height: 560),
+                contentRect: NSRect(x: 0, y: 0, width: 1040, height: 620),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -198,10 +198,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             window.contentViewController = controller
             window.title = Self.appName
             window.toolbarStyle = .unified
-            window.contentMinSize = NSSize(width: 720, height: 480)
-            window.setContentSize(NSSize(width: 820, height: 560))
+            window.contentMinSize = NSSize(width: 900, height: 520)
+            window.setContentSize(NSSize(width: 1040, height: 620))
             if !window.setFrameUsingName(Self.windowFrameName) {
                 window.center()
+            } else if window.contentLayoutRect.width < window.contentMinSize.width {
+                // A frame saved before the settings column beside the table.
+                window.setContentSize(NSSize(width: 1040, height: max(window.contentLayoutRect.height, 620)))
             }
             window.setFrameAutosaveName(Self.windowFrameName)
             window.delegate = self

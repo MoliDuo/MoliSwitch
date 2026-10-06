@@ -1,6 +1,8 @@
 import Foundation
 import XCTest
 
+import MoliSwitchCore
+
 @testable import MoliSwitchApp
 
 final class AppRuntimeRulesTests: XCTestCase {
@@ -220,6 +222,47 @@ final class AppRuntimeRulesTests: XCTestCase {
         )
 
         XCTAssertEqual(fixture.runtime.displayApplications.first?.name, "com.example.ghost")
+    }
+
+    @MainActor
+    func testApplicationsWithOnlyFieldRulesAreListedAndConfigured() async {
+        let fieldRule = FieldRule(
+            bundleIdentifier: "com.tencent.xinWeChat",
+            applicationName: "WeChat",
+            label: "搜索",
+            signature: FieldSignature(role: "AXTextField"),
+            inputSourceID: AppRuntime.englishRuleID,
+            inputSourceName: "英文"
+        )
+        let fixture = makeFixture(fieldRules: [fieldRule], installedApplications: [terminal])
+        await fixture.scan()
+
+        fixture.runtime.applicationListScope = .configured
+        XCTAssertEqual(
+            fixture.runtime.filteredInstalledApplications.map(\.bundleIdentifier),
+            ["com.tencent.xinWeChat"]
+        )
+        let wechat = fixture.runtime.filteredInstalledApplications[0]
+        XCTAssertEqual(fixture.runtime.fieldRules(for: wechat.bundleIdentifier), [fieldRule])
+        XCTAssertEqual(fixture.runtime.extrasSummary(for: wechat), "1 个输入框")
+        XCTAssertNil(fixture.runtime.extrasSummary(for: terminal))
+    }
+
+    @MainActor
+    func testTerminalsWithProgramsAreConfigured() async {
+        let fixture = makeFixture(
+            commandRules: [CommandRule(command: "claude", inputSourceID: AppRuntime.chineseRuleID, inputSourceName: "中文")],
+            installedApplications: [terminal]
+        )
+        await fixture.scan()
+
+        fixture.runtime.applicationListScope = .configured
+        XCTAssertEqual(
+            fixture.runtime.filteredInstalledApplications.map(\.bundleIdentifier),
+            ["com.apple.Terminal"]
+        )
+        XCTAssertTrue(fixture.runtime.supportsTerminal(bundleIdentifier: terminal.bundleIdentifier))
+        XCTAssertEqual(fixture.runtime.extrasSummary(for: terminal), "1 个终端程序")
     }
 
     @MainActor

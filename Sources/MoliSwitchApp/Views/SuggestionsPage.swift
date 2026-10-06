@@ -5,11 +5,14 @@ import SwiftUI
 /// Nothing changes until one is applied, and an applied one can be undone.
 struct SuggestionsPage: View {
     @ObservedObject var runtime: AppRuntime
+    @State private var confirmsClearingUsageLog = false
 
     var body: some View {
         Form {
             Section {
-                if runtime.suggestions.isEmpty {
+                if !runtime.usageLoggingEnabled {
+                    NoticeRow(text: "打开下面的“记录使用日志”后，才能根据使用情况给出建议。")
+                } else if runtime.suggestions.isEmpty {
                     Text(runtime.isAnalyzing ? "正在分析使用记录…" : "暂时没有建议。")
                         .foregroundStyle(.secondary)
                 }
@@ -53,6 +56,24 @@ struct SuggestionsPage: View {
                         }
                     }
                 }
+            }
+
+            Section {
+                Toggle("记录使用日志", isOn: $runtime.usageLoggingEnabled)
+                HStack {
+                    Button("打开日志文件夹") { runtime.revealUsageLogFolder() }
+                    Button("清除日志…") { confirmsClearingUsageLog = true }
+                }
+            } header: {
+                Text("使用日志")
+            } footer: {
+                SectionFooter(
+                    "记下前台 App、输入法切换、按键的种类和时间，用来分析并优化配置。"
+                        + "只保存在这台 Mac 上，保留 30 天。会记录按键、输入框信息和输入框里的文字（密码框和密码管理器除外）。"
+                )
+            }
+            .confirmationDialog("清除全部使用日志？", isPresented: $confirmsClearingUsageLog) {
+                Button("清除", role: .destructive) { runtime.clearUsageLog() }
             }
         }
         .formStyle(.grouped)

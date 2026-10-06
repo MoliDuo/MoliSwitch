@@ -1,9 +1,7 @@
-import AppKit
 import SwiftUI
 
 struct GeneralPage: View {
     @ObservedObject var runtime: AppRuntime
-    @State private var confirmsClearingUsageLog = false
 
     var body: some View {
         Form {
@@ -34,28 +32,6 @@ struct GeneralPage: View {
             }
 
             Section {
-                InputSourcePicker(
-                    title: "中文",
-                    selection: $runtime.chineseInputSourceSelection,
-                    fixedChoices: [automaticChoice(detected: runtime.detectedChineseInputSource)],
-                    otherChoices: runtime.chineseInputSourceChoices
-                )
-                InputSourcePicker(
-                    title: "英文",
-                    selection: $runtime.englishInputSourceSelection,
-                    fixedChoices: [automaticChoice(detected: runtime.detectedEnglishInputSource)],
-                    otherChoices: runtime.englishInputSourceChoices
-                )
-            } header: {
-                Text("输入法")
-            } footer: {
-                SectionFooter(
-                    "规则里选“中文”或“英文”时，切到这里的输入法。"
-                        + "列表里没有你的输入法？先在 系统设置 › 键盘 › 输入法 中添加。"
-                )
-            }
-
-            Section {
                 Toggle(
                     "切换后在光标旁显示输入法",
                     isOn: Binding(
@@ -69,22 +45,6 @@ struct GeneralPage: View {
                         + "切换时会卡一下，按 Shift 或 / 切英文时最明显。建议关闭，菜单栏仍会显示当前输入法。"
                         + "改完后，如果某个 App 里还没变化，重新打开这个 App 就行。"
                 )
-            }
-
-            Section {
-                Toggle("记录使用日志", isOn: $runtime.usageLoggingEnabled)
-                HStack {
-                    Button("打开日志文件夹") { runtime.revealUsageLogFolder() }
-                    Button("清除日志…") { confirmsClearingUsageLog = true }
-                }
-            } footer: {
-                SectionFooter(
-                    "记下前台 App、输入法切换、按键的种类和时间，用来分析并优化配置。"
-                        + "只保存在这台 Mac 上，保留 30 天。会记录按键、输入框信息和输入框里的文字（密码框和密码管理器除外）。"
-                )
-            }
-            .confirmationDialog("清除全部使用日志？", isPresented: $confirmsClearingUsageLog) {
-                Button("清除", role: .destructive) { runtime.clearUsageLog() }
             }
 
             Section("关于") {
@@ -101,19 +61,6 @@ struct GeneralPage: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear {
-            runtime.refreshInputSourceIndicator()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            runtime.refreshInputSourceIndicator()
-        }
-    }
-
-    private func automaticChoice(detected: InputSource?) -> InputSourceChoice {
-        InputSourceChoice(
-            id: AppRuntime.automaticInputSourceID,
-            name: "自动识别（" + (detected?.name ?? "未找到") + "）"
-        )
     }
 }
 

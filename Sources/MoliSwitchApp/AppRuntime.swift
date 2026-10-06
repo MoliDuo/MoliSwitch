@@ -76,6 +76,8 @@ final class AppRuntime: ObservableObject {
     @Published private(set) var loginStatus: StatusMessage?
 
     @Published var searchText = ""
+    /// The application whose settings show beside the application table.
+    @Published var selectedApplicationID: String?
     @Published var applicationListScope: ApplicationListScope = .all
     @Published var showMenuBarIcon: Bool {
         didSet {
@@ -624,9 +626,10 @@ final class AppRuntime: ObservableObject {
             )
         }
 
-        // Applications chosen from elsewhere for slash commands or Shift.
+        // Applications chosen from elsewhere for slash commands, Shift or text fields.
         let otherApps = slashCommandApps.apps.map { ($0.bundleIdentifier, $0.applicationName) }
             + shiftAppRules.rules.map { ($0.bundleIdentifier, $0.applicationName) }
+            + fieldRuleSet.rules.map { ($0.bundleIdentifier, $0.applicationName) }
         for (bundleIdentifier, name) in otherApps
         where seenBundleIdentifiers.insert(bundleIdentifier).inserted {
             result.append(
@@ -647,12 +650,49 @@ final class AppRuntime: ObservableObject {
         }
     }
 
-    /// Applications with anything of their own: a rule, slash commands, or
-    /// Shift settings.
+    /// Applications with anything of their own: a rule, slash commands, Shift
+    /// settings or remembered text fields, and the terminals once they have
+    /// programs.
     private var configuredBundleIdentifiers: Set<String> {
-        Set(ruleSet.rules.map(\.bundleIdentifier))
+        var identifiers = Set(ruleSet.rules.map(\.bundleIdentifier))
             .union(slashCommandApps.apps.map(\.bundleIdentifier))
             .union(shiftAppRules.rules.map(\.bundleIdentifier))
+            .union(fieldRuleSet.rules.map(\.bundleIdentifier))
+        if !commandRuleSet.rules.isEmpty {
+            identifiers.formUnion(
+                installedApplications.map(\.bundleIdentifier).filter(supportsTerminal(bundleIdentifier:))
+            )
+        }
+        return identifiers
+    }
+
+    /// Whether programs running in the application can have rules of their own.
+    func supportsTerminal(bundleIdentifier: String) -> Bool {
+        terminalContextProvider.supportsTerminal(bundleIdentifier: bundleIdentifier)
+    }
+
+    func fieldRules(for bundleIdentifier: String) -> [FieldRule] {
+        fieldRuleSet.rules.filter { $0.bundleIdentifier == bundleIdentifier }
+    }
+
+    /// What an application has besides its input source, in a few words, or
+    /// nil when it has nothing else.
+    func extrasSummary(for application: InstalledApplication) -> String? {
+        var parts: [String] = []
+        if usesSlashCommands(application) {
+            parts.append("/ 命令")
+        }
+        if let options = shiftOptions(for: application) {
+            parts.append("⇧ " + (options.switchesNothing ? "关闭" : "自定义"))
+        }
+        if supportsTerminal(bundleIdentifier: application.bundleIdentifier), !commandRuleSet.rules.isEmpty {
+            parts.append("\(commandRuleSet.rules.count) 个终端程序")
+        }
+        let fieldCount = fieldRules(for: application.bundleIdentifier).count
+        if fieldCount > 0 {
+            parts.append("\(fieldCount) 个输入框")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     var filteredInstalledApplications: [InstalledApplication] {
