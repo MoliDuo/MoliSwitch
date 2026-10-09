@@ -2,7 +2,8 @@ import Foundation
 import XCTest
 @testable import MoliSwitchApp
 
-@MainActor
+/// Only the tests are on the main actor: on Swift 6.3 a main actor class cannot
+/// set its properties from the nonisolated setUpWithError.
 final class LegacyMigrationTests: XCTestCase {
     private var root: URL!
     private var legacyDirectory: URL!
@@ -30,6 +31,7 @@ final class LegacyMigrationTests: XCTestCase {
         return UserDefaults(suiteName: name)!
     }
 
+    @MainActor
     private func makeMigration(legacyDefaults: UserDefaults, defaults: UserDefaults) -> LegacyMigration {
         LegacyMigration(
             legacyDirectory: legacyDirectory,
@@ -47,6 +49,7 @@ final class LegacyMigrationTests: XCTestCase {
         try String(contentsOf: url, encoding: .utf8)
     }
 
+    @MainActor
     func testCopiesRuleFilesAndSettings() throws {
         try write("[\"apps\"]", to: legacyDirectory.appendingPathComponent("rules.json"))
         try write("[\"commands\"]", to: legacyDirectory.appendingPathComponent("command-rules.json"))
@@ -69,6 +72,7 @@ final class LegacyMigrationTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: legacyDirectory.appendingPathComponent("rules.json").path))
     }
 
+    @MainActor
     func testWithoutAnOldVersionNothingIsCreated() throws {
         try FileManager.default.removeItem(at: legacyDirectory)
         let defaults = makeDefaults()
@@ -79,6 +83,7 @@ final class LegacyMigrationTests: XCTestCase {
         XCTAssertTrue(defaults.bool(forKey: LegacyMigration.completedKey))
     }
 
+    @MainActor
     func testExistingFilesAndSettingsAreKept() throws {
         try write("[\"old\"]", to: legacyDirectory.appendingPathComponent("rules.json"))
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -94,6 +99,7 @@ final class LegacyMigrationTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: AppRuntime.chineseInputSourceIDKey), "new")
     }
 
+    @MainActor
     func testRunsOnlyOnce() throws {
         let legacyDefaults = makeDefaults()
         let defaults = makeDefaults()
