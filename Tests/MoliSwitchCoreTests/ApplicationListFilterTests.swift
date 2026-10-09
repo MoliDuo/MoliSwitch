@@ -1,5 +1,4 @@
 import XCTest
-
 @testable import MoliSwitchCore
 
 final class ApplicationListFilterTests: XCTestCase {
@@ -86,4 +85,3 @@ final class ApplicationListFilterTests: XCTestCase {
         XCTAssertFalse(configuredWithOtherQuery.includes(leftoverRule))
     }
 }
-

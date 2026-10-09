@@ -184,7 +184,7 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
     private func computeAvailableInputSources() -> [InputSource] {
         let filters: [String: Any] = [
             kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String,
-            kTISPropertyInputSourceIsSelectCapable as String: true
+            kTISPropertyInputSourceIsSelectCapable as String: true,
         ]
 
         let list = TISCreateInputSourceList(filters as CFDictionary, false).takeRetainedValue()
@@ -209,7 +209,7 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
         }
 
         let filters: [String: Any] = [
-            kTISPropertyInputSourceID as String: id
+            kTISPropertyInputSourceID as String: id,
         ]
         let list = TISCreateInputSourceList(filters as CFDictionary, false).takeRetainedValue()
         let source = (list as NSArray).map { $0 as! TISInputSource }.first

@@ -25,7 +25,9 @@ public struct RuleSuggestion: Identifiable, Equatable, Sendable {
     public enum Kind: Int, CaseIterable, Comparable, Sendable {
         case application, command, field, shift
 
-        public static func < (lhs: Kind, rhs: Kind) -> Bool { lhs.rawValue < rhs.rawValue }
+        public static func < (lhs: Kind, rhs: Kind) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
     }
 
     public var kind: Kind {

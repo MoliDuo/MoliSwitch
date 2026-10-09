@@ -50,7 +50,7 @@ public final class JSONLUsageLogger: UsageLogging, @unchecked Sendable {
         maximumBuffered: Int = 50
     ) {
         self.directory = directory
-        self.enabled = isEnabled
+        enabled = isEnabled
         self.retentionDays = retentionDays
         self.flushInterval = flushInterval
         self.maximumBuffered = maximumBuffered

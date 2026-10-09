@@ -1,11 +1,10 @@
 import Foundation
 import XCTest
-
 @testable import MoliSwitchApp
 
 final class UpdateControllerTests: XCTestCase {
     @MainActor
-    func testPublicKeyValidationAcceptsOnlyRealEd25519Keys() async {
+    func testPublicKeyValidationAcceptsOnlyRealEd25519Keys() {
         let realKey = Data(repeating: 7, count: 32).base64EncodedString()
 
         XCTAssertTrue(UpdateController.isUsablePublicKey(realKey))
@@ -24,7 +23,7 @@ final class UpdateControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testBundleWithoutUpdateConfigurationIsNotUpdatable() async {
+    func testBundleWithoutUpdateConfigurationIsNotUpdatable() {
         // The test bundle carries neither SUFeedURL nor SUPublicEDKey, so no
         // updater may be created for it.
         XCTAssertNil(UpdateController.configuration(of: .main))
@@ -32,7 +31,7 @@ final class UpdateControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testControllerStaysIdleUntilStarted() async {
+    func testControllerStaysIdleUntilStarted() {
         let controller = UpdateController(hostBundle: .main)
 
         XCTAssertFalse(controller.canCheckForUpdates)
@@ -43,4 +42,3 @@ final class UpdateControllerTests: XCTestCase {
         controller.stop()
     }
 }
-

@@ -1,7 +1,9 @@
 import Foundation
 
 public struct AppRule: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { bundleIdentifier }
+    public var id: String {
+        bundleIdentifier
+    }
 
     public var bundleIdentifier: String
     public var applicationName: String

@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
-import MoliSwitchCore
 import Foundation
+import MoliSwitchCore
 
 /// Follows keyboard focus in the frontmost application with an AXObserver.
 @MainActor
@@ -119,11 +119,12 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
             return nil
         }
 
-        let element: AXUIElement
-        if let observedApplication, observedProcessIdentifier == application.processIdentifier {
-            element = observedApplication
+        let element: AXUIElement = if let observedApplication,
+                                      observedProcessIdentifier == application.processIdentifier
+        {
+            observedApplication
         } else {
-            element = Self.applicationElement(application.processIdentifier)
+            Self.applicationElement(application.processIdentifier)
         }
         return Self.element(element, kAXFocusedUIElementAttribute)
     }

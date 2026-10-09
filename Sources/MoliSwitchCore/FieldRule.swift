@@ -121,7 +121,7 @@ public struct FieldRuleSet: Equatable, Sendable {
     public init(normalizing rules: [FieldRule]) {
         var result = FieldRuleSet()
         for rule in rules
-        where RuleSet.isValidIdentifier(rule.bundleIdentifier)
+            where RuleSet.isValidIdentifier(rule.bundleIdentifier)
             && RuleSet.isValidIdentifier(rule.inputSourceID)
             && !rule.signature.role.isEmpty
             && !result.rules.contains(where: { $0.id == rule.id })

@@ -1,20 +1,22 @@
 import Foundation
-import XCTest
-
 import MoliSwitchCore
-
+import XCTest
 @testable import MoliSwitchApp
 
 final class AppRuntimeUsageLogTests: XCTestCase {
     private let notes = RunningApplicationInfo(bundleIdentifier: "com.apple.Notes", name: "Notes")
 
     private func string(_ event: UsageEvent, _ key: String) -> String? {
-        if case .string(let value)? = event.fields[key] { return value }
+        if case let .string(value)? = event.fields[key] {
+            return value
+        }
         return nil
     }
 
     private func bool(_ event: UsageEvent, _ key: String) -> Bool? {
-        if case .bool(let value)? = event.fields[key] { return value }
+        if case let .bool(value)? = event.fields[key] {
+            return value
+        }
         return nil
     }
 
@@ -28,7 +30,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
                     applicationName: "Notes",
                     inputSourceID: TestInputSources.abc.id,
                     inputSourceName: "ABC"
-                )
+                ),
             ]
         )
 
@@ -59,7 +61,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
                     bundleIdentifier: notes.bundleIdentifier,
                     inputSourceID: TestInputSources.abc.id,
                     inputSourceName: "ABC"
-                )
+                ),
             ]
         )
         fixture.inputSources.selectionResult = false
@@ -98,7 +100,7 @@ final class AppRuntimeUsageLogTests: XCTestCase {
                     bundleIdentifier: notes.bundleIdentifier,
                     inputSourceID: TestInputSources.abc.id,
                     inputSourceName: "ABC"
-                )
+                ),
             ]
         )
         fixture.runtime.start()

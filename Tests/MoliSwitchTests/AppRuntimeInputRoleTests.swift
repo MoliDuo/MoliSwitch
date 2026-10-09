@@ -1,8 +1,6 @@
 import Foundation
-import XCTest
-
 import MoliSwitchCore
-
+import XCTest
 @testable import MoliSwitchApp
 
 final class AppRuntimeInputRoleTests: XCTestCase {
@@ -25,7 +23,7 @@ final class AppRuntimeInputRoleTests: XCTestCase {
     }
 
     @MainActor
-    func testRolesAreDetectedAutomatically() async {
+    func testRolesAreDetectedAutomatically() {
         let fixture = makeRoleFixture()
 
         XCTAssertEqual(fixture.runtime.effectiveChineseInputSource, TestInputSources.shuangpin)
@@ -42,7 +40,7 @@ final class AppRuntimeInputRoleTests: XCTestCase {
     }
 
     @MainActor
-    func testExternalSwitchUpdatesTheCurrentInputSource() async {
+    func testExternalSwitchUpdatesTheCurrentInputSource() {
         let fixture = makeRoleFixture()
         fixture.runtime.start()
         defer { fixture.runtime.stop() }
@@ -52,7 +50,7 @@ final class AppRuntimeInputRoleTests: XCTestCase {
     }
 
     @MainActor
-    func testRoleRuleSwitchesToTheRoleInputSource() async {
+    func testRoleRuleSwitchesToTheRoleInputSource() {
         let fixture = makeRoleFixture()
 
         fixture.runtime.setInputSourceID(AppRuntime.englishRuleID, for: terminal)
@@ -70,7 +68,7 @@ final class AppRuntimeInputRoleTests: XCTestCase {
     }
 
     @MainActor
-    func testRuleNamingTheRoleInputSourceIsShownAsTheRole() async {
+    func testRuleNamingTheRoleInputSourceIsShownAsTheRole() {
         let fixture = makeRoleFixture(rules: [
             makeRule(
                 bundleIdentifier: "com.apple.Terminal",
@@ -84,7 +82,7 @@ final class AppRuntimeInputRoleTests: XCTestCase {
     }
 
     @MainActor
-    func testChangingARoleKeepsRulesThatWereShownAsIt() async {
+    func testChangingARoleKeepsRulesThatWereShownAsIt() {
         let fixture = makeRoleFixture(rules: [
             makeRule(
                 bundleIdentifier: "com.apple.Terminal",
@@ -104,7 +102,7 @@ final class AppRuntimeInputRoleTests: XCTestCase {
     }
 
     @MainActor
-    func testMissingRoleInputSourceReportsAWarning() async {
+    func testMissingRoleInputSourceReportsAWarning() {
         let fixture = makeFixture(
             rules: [
                 makeRule(
@@ -132,7 +130,7 @@ final class ChineseInputSourceDetectionTests: XCTestCase {
     private let sogou = InputSource(id: "com.sogou.inputmethod.sogou.pinyin", name: "搜狗拼音")
 
     @MainActor
-    func testAppleChineseInputMethodIsPreferredOverThirdPartyOnes() async {
+    func testAppleChineseInputMethodIsPreferredOverThirdPartyOnes() {
         // Third-party names sort before "Shuangpin", which used to decide the result.
         let fixture = makeFixture(
             sources: [TestInputSources.us, TestInputSources.shuangpin, wetype, sogou],
@@ -143,7 +141,7 @@ final class ChineseInputSourceDetectionTests: XCTestCase {
     }
 
     @MainActor
-    func testThirdPartyInputMethodIsDetectedWithoutAnAppleOne() async {
+    func testThirdPartyInputMethodIsDetectedWithoutAnAppleOne() {
         let fixture = makeFixture(
             sources: [TestInputSources.us, wetype],
             current: TestInputSources.us
@@ -163,7 +161,7 @@ final class ChineseInputSourceDetectionTests: XCTestCase {
     }
 
     @MainActor
-    func testRejectedSwitchIsReported() async {
+    func testRejectedSwitchIsReported() {
         let fixture = makeFixture(
             rules: [
                 makeRule(

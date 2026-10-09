@@ -1,5 +1,4 @@
 import XCTest
-
 @testable import MoliSwitchApp
 
 final class LaunchAtLoginStatusTests: XCTestCase {
@@ -17,4 +16,3 @@ final class LaunchAtLoginStatusTests: XCTestCase {
         XCTAssertFalse(LaunchAtLoginStatus.notFound.isEnabled)
     }
 }
-

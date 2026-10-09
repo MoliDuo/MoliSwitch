@@ -34,7 +34,9 @@ public enum RemoteTitleParser {
         if let range = text.range(of: " — ") {
             text = String(text[..<range.lowerBound])
         }
-        if text.hasSuffix(")"), let open = text.lastIndex(of: "("), text[open...].contains(where: \.isWhitespace) == false {
+        if text.hasSuffix(")"), let open = text.lastIndex(of: "("),
+           text[open...].contains(where: \.isWhitespace) == false
+        {
             text = String(text[..<open]).trimmingCharacters(in: .whitespaces)
         }
 

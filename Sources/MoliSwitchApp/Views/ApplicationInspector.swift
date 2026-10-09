@@ -123,7 +123,6 @@ private struct ApplicationSettingsForm: View {
 
     // MARK: - Terminal
 
-    @ViewBuilder
     private var terminalSections: some View {
         Section {
             Toggle("按前台程序切换", isOn: $runtime.terminalSwitchingEnabled)

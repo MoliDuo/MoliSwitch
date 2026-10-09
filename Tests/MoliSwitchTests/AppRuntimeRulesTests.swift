@@ -1,8 +1,6 @@
 import Foundation
-import XCTest
-
 import MoliSwitchCore
-
+import XCTest
 @testable import MoliSwitchApp
 
 final class AppRuntimeRulesTests: XCTestCase {
@@ -12,7 +10,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     // MARK: - Loading
 
     @MainActor
-    func testRulesAreLoadedAndEditingIsEnabled() async {
+    func testRulesAreLoadedAndEditingIsEnabled() {
         let fixture = makeFixture(rules: [makeRule(bundleIdentifier: "com.apple.Terminal")])
 
         XCTAssertEqual(fixture.runtime.ruleSet.rules.count, 1)
@@ -27,7 +25,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testDuplicatesFromDiskAreNormalisedToTheFirstRule() async {
+    func testDuplicatesFromDiskAreNormalisedToTheFirstRule() {
         let first = makeRule(
             bundleIdentifier: "com.apple.Terminal",
             inputSourceName: "第一条"
@@ -42,7 +40,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testRuleFileReadFailurePausesEditingAndKeepsInMemoryRules() async {
+    func testRuleFileReadFailurePausesEditingAndKeepsInMemoryRules() {
         let fixture = makeFixture(rules: [makeRule(bundleIdentifier: "com.apple.Terminal")])
         fixture.store.failLoading(with: FakeRuleStore.Failure(message: "unreadable"))
 
@@ -61,7 +59,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testEditingIsRejectedWhileRulesCannotBeRead() async {
+    func testEditingIsRejectedWhileRulesCannotBeRead() {
         let fixture = makeFixture(rules: [])
         fixture.store.failLoading(with: FakeRuleStore.Failure(message: "unreadable"))
         fixture.runtime.reloadRulesFromDisk()
@@ -76,7 +74,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     // MARK: - Saving
 
     @MainActor
-    func testSaveFailureLeavesTheVisibleRulesUnchanged() async {
+    func testSaveFailureLeavesTheVisibleRulesUnchanged() {
         let fixture = makeFixture(rules: [])
         fixture.store.failSaving(with: FakeRuleStore.Failure(message: "read-only volume"))
 
@@ -93,7 +91,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testSuccessfulSavePublishesTheCandidateRules() async {
+    func testSuccessfulSavePublishesTheCandidateRules() {
         let fixture = makeFixture(rules: [])
 
         fixture.runtime.setInputSourceID(TestInputSources.us.id, for: terminal)
@@ -105,7 +103,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testSelectingDefaultRemovesTheRule() async {
+    func testSelectingDefaultRemovesTheRule() {
         let fixture = makeFixture(rules: [makeRule(bundleIdentifier: "com.apple.Terminal")])
 
         fixture.runtime.setInputSourceID(
@@ -118,7 +116,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testSelectingAnUnavailableInputSourceIsRejected() async {
+    func testSelectingAnUnavailableInputSourceIsRejected() {
         let fixture = makeFixture(rules: [])
 
         fixture.runtime.setInputSourceID("com.example.missing", for: terminal)
@@ -129,7 +127,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testSavedButUnavailableInputSourceStaysSelectableAndUnchanged() async {
+    func testSavedButUnavailableInputSourceStaysSelectableAndUnchanged() {
         let saved = makeRule(
             bundleIdentifier: "com.apple.Terminal",
             inputSourceID: "com.example.gone",
@@ -154,7 +152,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testSavedButUnavailableInputSourceWithoutANameFallsBackToItsIdentifier() async {
+    func testSavedButUnavailableInputSourceWithoutANameFallsBackToItsIdentifier() {
         let saved = makeRule(
             bundleIdentifier: "com.apple.Terminal",
             inputSourceID: "com.example.gone",
@@ -188,7 +186,7 @@ final class AppRuntimeRulesTests: XCTestCase {
 
         guard
             let ghost = fixture.runtime.displayApplications
-                .first(where: { $0.bundleIdentifier == "com.example.ghost" })
+            .first(where: { $0.bundleIdentifier == "com.example.ghost" })
         else {
             return XCTFail("The leftover rule is missing from the application list")
         }
@@ -210,13 +208,13 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testLeftoverRuleWithoutANameFallsBackToItsBundleIdentifier() async {
+    func testLeftoverRuleWithoutANameFallsBackToItsBundleIdentifier() {
         let fixture = makeFixture(
             rules: [
                 makeRule(
                     bundleIdentifier: "com.example.ghost",
                     applicationName: "   "
-                )
+                ),
             ],
             installedApplications: []
         )
@@ -251,7 +249,11 @@ final class AppRuntimeRulesTests: XCTestCase {
     @MainActor
     func testTerminalsWithProgramsAreConfigured() async {
         let fixture = makeFixture(
-            commandRules: [CommandRule(command: "claude", inputSourceID: AppRuntime.chineseRuleID, inputSourceName: "中文")],
+            commandRules: [CommandRule(
+                command: "claude",
+                inputSourceID: AppRuntime.chineseRuleID,
+                inputSourceName: "中文"
+            )],
             installedApplications: [terminal]
         )
         await fixture.scan()
@@ -295,7 +297,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     // MARK: - Preferences
 
     @MainActor
-    func testMenuBarIconPreferenceIsPersisted() async {
+    func testMenuBarIconPreferenceIsPersisted() {
         let fixture = makeFixture()
 
         XCTAssertTrue(fixture.runtime.showMenuBarIcon)
@@ -317,7 +319,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     // MARK: - Launch at login
 
     @MainActor
-    func testLaunchAtLoginWaitingForApprovalIsNotRegisteredAgain() async {
+    func testLaunchAtLoginWaitingForApprovalIsNotRegisteredAgain() {
         let fixture = makeFixture()
         fixture.loginItems.status = .requiresApproval
         fixture.runtime.refreshLaunchAtLoginStatus()
@@ -331,7 +333,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testLaunchAtLoginCanBeUnregisteredWhileWaitingForApproval() async {
+    func testLaunchAtLoginCanBeUnregisteredWhileWaitingForApproval() {
         let fixture = makeFixture()
         fixture.loginItems.status = .requiresApproval
         fixture.runtime.refreshLaunchAtLoginStatus()
@@ -343,7 +345,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testLaunchAtLoginRegistrationFailureIsReported() async {
+    func testLaunchAtLoginRegistrationFailureIsReported() {
         let fixture = makeFixture()
         fixture.loginItems.registerError = FakeRuleStore.Failure(message: "denied")
 
@@ -354,7 +356,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     }
 
     @MainActor
-    func testLaunchAtLoginSystemSettingsEntryIsAvailable() async {
+    func testLaunchAtLoginSystemSettingsEntryIsAvailable() {
         let fixture = makeFixture()
 
         fixture.runtime.openLoginItemsSystemSettings()
@@ -365,7 +367,7 @@ final class AppRuntimeRulesTests: XCTestCase {
     // MARK: - Lifecycle
 
     @MainActor
-    func testStopIsIdempotent() async {
+    func testStopIsIdempotent() {
         let fixture = makeFixture()
 
         fixture.runtime.stop()

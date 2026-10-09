@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-
 @testable import MoliSwitchCore
 
 final class UsageLoggerTests: XCTestCase {
@@ -82,11 +81,11 @@ final class UsageLoggerTests: XCTestCase {
         XCTAssertTrue(written[1].contains("\"e\":\"two\""))
     }
 
-    func testEventsAreSplitIntoOneFilePerDay() throws {
+    func testEventsAreSplitIntoOneFilePerDay() {
         let directory = makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let logger = JSONLUsageLogger(directory: directory)
-        let day: TimeInterval = 86_400 * 2
+        let day: TimeInterval = 86400 * 2
 
         logger.log(UsageEvent("old", time: Date(timeIntervalSinceNow: -day)))
         logger.log(UsageEvent("new"))

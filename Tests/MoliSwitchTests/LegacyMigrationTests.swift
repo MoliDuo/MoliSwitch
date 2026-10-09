@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-
 @testable import MoliSwitchApp
 
 @MainActor
@@ -61,7 +60,8 @@ final class LegacyMigrationTests: XCTestCase {
 
         XCTAssertEqual(try read(directory.appendingPathComponent("rules.json")), "[\"apps\"]")
         XCTAssertEqual(try read(directory.appendingPathComponent("command-rules.json")), "[\"commands\"]")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("field-rules.json").path))
+        XCTAssertFalse(FileManager.default
+            .fileExists(atPath: directory.appendingPathComponent("field-rules.json").path))
         XCTAssertEqual(defaults.object(forKey: AppRuntime.showMenuBarIconKey) as? Bool, false)
         XCTAssertEqual(defaults.integer(forKey: "switchCount"), 42)
         XCTAssertNil(defaults.object(forKey: "voiceRestoreEnabled"))

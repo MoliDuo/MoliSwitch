@@ -3,7 +3,9 @@ import Foundation
 /// A key that types a character, by its place on the keyboard, so it is the
 /// same key whatever the input source. Characters are those of the US layout.
 public struct ShiftKey: Equatable, Hashable, Identifiable, Sendable {
-    public var id: Int { keyCode }
+    public var id: Int {
+        keyCode
+    }
 
     public let keyCode: Int
     /// Typed without Shift.
@@ -78,7 +80,7 @@ public struct ShiftKey: Equatable, Hashable, Identifiable, Sendable {
         ],
     ]
 
-    public static let all: [ShiftKey] = rows.flatMap { $0 }
+    public static let all: [ShiftKey] = rows.flatMap(\.self)
 
     private static let byKeyCode: [Int: ShiftKey] = Dictionary(uniqueKeysWithValues: all.map { ($0.keyCode, $0) })
 

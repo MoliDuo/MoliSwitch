@@ -58,12 +58,20 @@ public struct ShiftEnglishOptions: Codable, Equatable, Sendable {
     /// Chooses or clears every key of the category.
     public mutating func set(_ category: ShiftKeyCategory, on: Bool) {
         let keys = ShiftKey.keyCodes(in: category)
-        if on { keyCodes.formUnion(keys) } else { keyCodes.subtract(keys) }
+        if on {
+            keyCodes.formUnion(keys)
+        } else {
+            keyCodes.subtract(keys)
+        }
     }
 
     public mutating func set(keyCode: Int, on: Bool) {
         let code = ShiftKey.key(forKeyCode: keyCode)?.keyCode ?? keyCode
-        if on { keyCodes.insert(code) } else { keyCodes.remove(code) }
+        if on {
+            keyCodes.insert(code)
+        } else {
+            keyCodes.remove(code)
+        }
     }
 
     /// Whether Shift with the key switches. Keys outside `ShiftKey`, like the
@@ -92,7 +100,7 @@ public struct ShiftEnglishOptions: Codable, Equatable, Sendable {
         if let keyCodes = try container.decodeIfPresent([Int].self, forKey: .keyCodes) {
             self.keyCodes = Set(keyCodes)
         } else {
-            keyCodes = Self.keyCodes(of: try container.decode(Set<ShiftKeyCategory>.self, forKey: .categories))
+            keyCodes = try Self.keyCodes(of: container.decode(Set<ShiftKeyCategory>.self, forKey: .categories))
         }
         restoresOnRelease = try container.decode(Bool.self, forKey: .restoresOnRelease)
     }
@@ -110,7 +118,9 @@ public struct ShiftEnglishOptions: Codable, Equatable, Sendable {
 /// How Shift works in one application, instead of the settings every other
 /// application uses. No keys means Shift does not switch there.
 public struct ShiftAppRule: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { bundleIdentifier }
+    public var id: String {
+        bundleIdentifier
+    }
 
     public var bundleIdentifier: String
     public var applicationName: String

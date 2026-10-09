@@ -1,10 +1,13 @@
 import Foundation
 import XCTest
-
 @testable import MoliSwitchCore
 
 final class ShiftAppRuleTests: XCTestCase {
-    private func rule(_ name: String, _ bundleIdentifier: String, _ options: ShiftEnglishOptions = .off) -> ShiftAppRule {
+    private func rule(
+        _ name: String,
+        _ bundleIdentifier: String,
+        _ options: ShiftEnglishOptions = .off
+    ) -> ShiftAppRule {
         ShiftAppRule(bundleIdentifier: bundleIdentifier, applicationName: name, options: options)
     }
 

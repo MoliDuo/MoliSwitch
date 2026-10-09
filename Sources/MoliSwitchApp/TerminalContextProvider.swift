@@ -1,8 +1,8 @@
 import AppKit
-import MoliSwitchCore
 import Carbon
 import Darwin
 import Foundation
+import MoliSwitchCore
 import OSAKit
 
 /// The program running in the foreground of the active terminal tab.
@@ -12,7 +12,7 @@ struct TerminalContext: Equatable, Sendable {
     let candidates: [String]
     /// The title of the tab, kept when the program runs on another host and
     /// was found by its title.
-    var remoteTitle: String? = nil
+    var remoteTitle: String?
 
     var displayName: String {
         guard remoteTitle != nil, let first = candidates.first, let via = candidates.last, first != via else {
@@ -182,12 +182,12 @@ private final class TerminalTabInspector: @unchecked Sendable {
         guard let expression = Self.ttyScripts[bundleIdentifier], let languageInstance else { return nil }
 
         let source = """
-            with timeout of 1 second
-                tell application id "\(bundleIdentifier)"
-                    \(expression)
-                end tell
-            end timeout
-            """
+        with timeout of 1 second
+            tell application id "\(bundleIdentifier)"
+                \(expression)
+            end tell
+        end timeout
+        """
         let script = OSAScript(source: source, from: nil, languageInstance: languageInstance, using: [])
 
         var error: NSDictionary?
@@ -260,7 +260,7 @@ private final class TerminalTabInspector: @unchecked Sendable {
         }
         guard
             let process = foreground.first(where: { $0.kp_proc.p_pid == $0.kp_eproc.e_pgid })
-                ?? foreground.min(by: { $0.kp_proc.p_pid < $1.kp_proc.p_pid })
+            ?? foreground.min(by: { $0.kp_proc.p_pid < $1.kp_proc.p_pid })
         else {
             return nil
         }
@@ -300,13 +300,19 @@ private final class TerminalTabInspector: @unchecked Sendable {
 
         let argc = buffer.withUnsafeBytes { $0.load(as: Int32.self) }
         var index = MemoryLayout<Int32>.size
-        while index < size, buffer[index] != 0 { index += 1 }
-        while index < size, buffer[index] == 0 { index += 1 }
+        while index < size, buffer[index] != 0 {
+            index += 1
+        }
+        while index < size, buffer[index] == 0 {
+            index += 1
+        }
 
         var arguments: [String] = []
         while arguments.count < argc, index < size {
             let start = index
-            while index < size, buffer[index] != 0 { index += 1 }
+            while index < size, buffer[index] != 0 {
+                index += 1
+            }
             arguments.append(String(decoding: buffer[start..<index], as: UTF8.self))
             index += 1
         }
@@ -389,7 +395,7 @@ enum ForegroundProgramNames {
         }
 
         let programNames = [arguments.first, executablePath, processName]
-            .compactMap { $0 }
+            .compactMap(\.self)
             .map(CommandRuleSet.normalizedCommand)
         if programNames.contains(where: isInterpreter), let script = scriptArgument(arguments) {
             let name = CommandRuleSet.normalizedCommand(script)

@@ -1,8 +1,6 @@
 import Foundation
-import XCTest
-
 import MoliSwitchCore
-
+import XCTest
 @testable import MoliSwitchApp
 
 final class AppRuntimeSuggestionTests: XCTestCase {
@@ -24,11 +22,13 @@ final class AppRuntimeSuggestionTests: XCTestCase {
             return [
                 "{\"app\":\"\(app)\",\"appName\":\"\(name)\",\"e\":\"appFocus\",\"mono\":\(start),\"terminal\":\(context)}",
                 "{\"app\":\"\(app)\",\"e\":\"manualSwitch\",\"from\":\"\(us)\",\"mono\":\(start + 500),\"to\":\"\(abc)\"}",
-            ] + (0..<5).map { letter(app, source: abc, mono: start + 1_000 + Double($0) * 100) }
+            ] + (0..<5).map { letter(app, source: abc, mono: start + 1000 + Double($0) * 100) }
         }
     }
 
-    private var lines: [String] { correctedVisits(app, name: "Notes") }
+    private var lines: [String] {
+        correctedVisits(app, name: "Notes")
+    }
 
     /// Shift + / typed in Chinese, deleted, and typed again, in each application.
     private func retypedSlash(in apps: [String]) -> [String] {
@@ -39,9 +39,9 @@ final class AppRuntimeSuggestionTests: XCTestCase {
             }
             return [
                 "{\"app\":\"\(app)\",\"appName\":\"Notes\",\"e\":\"appFocus\",\"mono\":\(start),\"terminal\":null}",
-                slash(start + 1_000),
-                "{\"app\":\"\(app)\",\"category\":null,\"current\":\"\(chinese)\",\"e\":\"key\",\"key\":\"backspace\",\"keyCode\":51,\"mono\":\(start + 1_500),\"shifted\":false}",
-                slash(start + 2_000),
+                slash(start + 1000),
+                "{\"app\":\"\(app)\",\"category\":null,\"current\":\"\(chinese)\",\"e\":\"key\",\"key\":\"backspace\",\"keyCode\":51,\"mono\":\(start + 1500),\"shifted\":false}",
+                slash(start + 2000),
             ]
         }
     }
@@ -53,7 +53,11 @@ final class AppRuntimeSuggestionTests: XCTestCase {
 
     @MainActor
     func testApplyAndUndoCommandRule() async {
-        let fixture = makeFixture(suggestionLines: correctedVisits("com.googlecode.iterm2", name: "iTerm2", terminal: "claude"))
+        let fixture = makeFixture(suggestionLines: correctedVisits(
+            "com.googlecode.iterm2",
+            name: "iTerm2",
+            terminal: "claude"
+        ))
         let runtime = fixture.runtime
 
         await runtime.refreshSuggestions()

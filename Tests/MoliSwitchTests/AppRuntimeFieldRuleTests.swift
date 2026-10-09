@@ -1,8 +1,6 @@
 import Foundation
-import XCTest
-
 import MoliSwitchCore
-
+import XCTest
 @testable import MoliSwitchApp
 
 final class AppRuntimeFieldRuleTests: XCTestCase {
@@ -58,7 +56,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testFieldRuleWinsOverTheApplicationRuleAndFallsBackWhenFocusLeaves() async {
+    func testFieldRuleWinsOverTheApplicationRuleAndFallsBackWhenFocusLeaves() {
         let fixture = makeWeChatFixture()
         fixture.fields.focus(chatField)
         fixture.runtime.applyRuleIfNeeded(for: wechat)
@@ -74,7 +72,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testActivatingWithFocusInTheFieldUsesItsRule() async {
+    func testActivatingWithFocusInTheFieldUsesItsRule() {
         let fixture = makeWeChatFixture()
         fixture.fields.focus(searchField)
 
@@ -84,7 +82,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testManualSwitchInsideTheSameFieldIsKept() async {
+    func testManualSwitchInsideTheSameFieldIsKept() {
         let fixture = makeWeChatFixture()
         fixture.fields.focus(searchField)
         fixture.runtime.applyRuleIfNeeded(for: wechat)
@@ -96,7 +94,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testWithoutAccessibilityTheApplicationRuleApplies() async {
+    func testWithoutAccessibilityTheApplicationRuleApplies() {
         let fixture = makeWeChatFixture(current: TestInputSources.us)
         fixture.fields.isTrusted = false
         fixture.fields.focus(searchField)
@@ -109,7 +107,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testApplicationsWithoutFieldRulesAreNotObserved() async {
+    func testApplicationsWithoutFieldRulesAreNotObserved() {
         let fixture = makeWeChatFixture()
 
         fixture.runtime.applyRuleIfNeeded(
@@ -120,7 +118,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testAddressBarSwitchesToEnglishAndReturnsToThePreviousInputSource() async {
+    func testAddressBarSwitchesToEnglishAndReturnsToThePreviousInputSource() {
         let fixture = makeBrowserFixture()
         fixture.fields.focus(pageField)
         fixture.runtime.applyRuleIfNeeded(for: safari)
@@ -135,7 +133,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testLeavingTheAddressBarKeepsAManualSwitch() async {
+    func testLeavingTheAddressBarKeepsAManualSwitch() {
         let fixture = makeBrowserFixture()
         fixture.fields.focus(pageField)
         fixture.runtime.applyRuleIfNeeded(for: safari)
@@ -148,7 +146,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testAddressBarUsesTheChosenInputSourceAndCanBeTurnedOff() async {
+    func testAddressBarUsesTheChosenInputSourceAndCanBeTurnedOff() {
         let fixture = makeBrowserFixture()
         fixture.runtime.addressBarInputSourceSelection = TestInputSources.abc.id
         fixture.inputSources.sources.append(TestInputSources.abc)
@@ -170,7 +168,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testRememberingTheFocusedFieldSavesTheCurrentInputSourceAsARole() async {
+    func testRememberingTheFocusedFieldSavesTheCurrentInputSourceAsARole() {
         let fixture = makeBrowserFixture()
         fixture.fields.focus(searchField)
         fixture.runtime.applyRuleIfNeeded(for: wechat)
@@ -198,7 +196,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testCaptureStateExplainsWhatIsMissing() async {
+    func testCaptureStateExplainsWhatIsMissing() {
         let fixture = makeBrowserFixture()
         fixture.runtime.applyRuleIfNeeded(for: wechat)
         XCTAssertEqual(fixture.runtime.fieldCaptureState(), .noField)
@@ -210,7 +208,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testEditingAndRemovingAFieldRule() async {
+    func testEditingAndRemovingAFieldRule() {
         let fixture = makeWeChatFixture()
         let id = searchRule().id
         let ruleID = fixture.runtime.fieldRuleSet.rules[0].id
@@ -229,7 +227,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testUnreadableFieldRulesPauseEditing() async {
+    func testUnreadableFieldRulesPauseEditing() {
         let fixture = makeWeChatFixture()
         fixture.fieldStore.failLoading(with: CocoaError(.fileReadCorruptFile))
 
@@ -243,7 +241,7 @@ final class AppRuntimeFieldRuleTests: XCTestCase {
     }
 
     @MainActor
-    func testChangingARoleKeepsFieldRulesAndTheAddressBarShownAsIt() async {
+    func testChangingARoleKeepsFieldRulesAndTheAddressBarShownAsIt() {
         let fixture = makeWeChatFixture()
         fixture.runtime.setInputSourceID(TestInputSources.us.id, forFieldRule: fixture.runtime.fieldRuleSet.rules[0].id)
         fixture.runtime.addressBarInputSourceSelection = TestInputSources.us.id

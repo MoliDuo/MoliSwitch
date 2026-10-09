@@ -170,14 +170,18 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
             // Modifier changes always go through; only letting go of Shift is
             // passed on.
             let shiftDown = event.flags.contains(.maskShift)
-            if self.shiftDown && !shiftDown {
+            if self.shiftDown, !shiftDown {
                 _ = handler?(.shiftReleased)
             }
             self.shiftDown = shiftDown
             let flags = event.flags
             var names = Self.modifierNames(flags)
-            if flags.contains(.maskAlphaShift) { names.append("caps") }
-            if flags.contains(.maskSecondaryFn) { names.append("fn") }
+            if flags.contains(.maskAlphaShift) {
+                names.append("caps")
+            }
+            if flags.contains(.maskSecondaryFn) {
+                names.append("fn")
+            }
             _ = handler?(
                 .modifierChanged(
                     keyCode: Int(event.getIntegerValueField(.keyboardEventKeycode)),

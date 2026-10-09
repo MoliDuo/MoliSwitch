@@ -1,7 +1,9 @@
 import Foundation
 
 struct InstalledApplication: Identifiable, Equatable, Sendable {
-    var id: String { bundleIdentifier }
+    var id: String {
+        bundleIdentifier
+    }
 
     let name: String
     let bundleIdentifier: String

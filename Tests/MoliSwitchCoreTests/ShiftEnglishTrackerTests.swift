@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-
 @testable import MoliSwitchCore
 
 final class ShiftEnglishTrackerTests: XCTestCase {
@@ -80,11 +79,25 @@ final class ShiftEnglishTrackerTests: XCTestCase {
         var tracker = ShiftEnglishTracker()
 
         XCTAssertEqual(
-            tracker.handle(.symbol, keyCode: 41, shifted: true, currentID: chinese, englishID: english, options: question),
+            tracker.handle(
+                .symbol,
+                keyCode: 41,
+                shifted: true,
+                currentID: chinese,
+                englishID: english,
+                options: question
+            ),
             .pass
         )
         XCTAssertEqual(
-            tracker.handle(.symbol, keyCode: 44, shifted: true, currentID: chinese, englishID: english, options: question),
+            tracker.handle(
+                .symbol,
+                keyCode: 44,
+                shifted: true,
+                currentID: chinese,
+                englishID: english,
+                options: question
+            ),
             .switchToEnglish(englishID: english)
         )
     }
@@ -94,12 +107,26 @@ final class ShiftEnglishTrackerTests: XCTestCase {
         var tracker = ShiftEnglishTracker()
         let someSymbols = ShiftEnglishOptions(keyCodes: [44], restoresOnRelease: true)
         XCTAssertEqual(
-            tracker.handle(.symbol, keyCode: 10, shifted: true, currentID: chinese, englishID: english, options: someSymbols),
+            tracker.handle(
+                .symbol,
+                keyCode: 10,
+                shifted: true,
+                currentID: chinese,
+                englishID: english,
+                options: someSymbols
+            ),
             .pass
         )
         let allSymbols = ShiftEnglishOptions(categories: [.symbol], restoresOnRelease: true)
         XCTAssertEqual(
-            tracker.handle(.symbol, keyCode: 10, shifted: true, currentID: chinese, englishID: english, options: allSymbols),
+            tracker.handle(
+                .symbol,
+                keyCode: 10,
+                shifted: true,
+                currentID: chinese,
+                englishID: english,
+                options: allSymbols
+            ),
             .switchToEnglish(englishID: english)
         )
     }

@@ -7,7 +7,9 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case suggestions
     case general
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {

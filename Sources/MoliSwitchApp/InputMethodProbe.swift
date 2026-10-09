@@ -141,7 +141,11 @@ final class InputMethodProbe: @unchecked Sendable {
                     MainActor.assumeIsolated {
                         self?.record(
                             "workspaceNotification",
-                            ["name": .string(noteName), "bundle": .optional(bundle), "pid": pid.map(JSONValue.int) ?? .null],
+                            [
+                                "name": .string(noteName),
+                                "bundle": .optional(bundle),
+                                "pid": pid.map(JSONValue.int) ?? .null,
+                            ],
                             parts: [.processes],
                             mayLogText: false
                         )
@@ -172,7 +176,9 @@ final class InputMethodProbe: @unchecked Sendable {
         let combined = CGEventSource.flagsState(.combinedSessionState)
         let hid = CGEventSource.flagsState(.hidSystemState)
         state["flags"] = .strings(flagNames(combined))
-        if hid != combined { state["hidFlags"] = .strings(flagNames(hid)) }
+        if hid != combined {
+            state["hidFlags"] = .strings(flagNames(hid))
+        }
         state["secureInput"] = .bool(IsSecureEventInputEnabled())
         state["keyboardType"] = .int(Int(LMGetKbdType()))
 
@@ -267,7 +273,7 @@ final class InputMethodProbe: @unchecked Sendable {
     private func windows(frontmostPID: pid_t?) -> JSONValue {
         guard
             let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-                as? [[String: Any]]
+            as? [[String: Any]]
         else {
             return .null
         }
@@ -283,17 +289,31 @@ final class InputMethodProbe: @unchecked Sendable {
             let isFront = pid == frontmostPID
             let isPopup = layer > 0 && layer != 24 && layer != 25
             guard isIME || isFront || isPopup else { continue }
-            if isIME { imeWindows += 1 }
-            if isPopup { popups += 1 }
+            if isIME {
+                imeWindows += 1
+            }
+            if isPopup {
+                popups += 1
+            }
             let bounds = window[kCGWindowBounds as String] as? [String: Any] ?? [:]
-            func number(_ key: String) -> Int { Int((bounds[key] as? Double) ?? Double(bounds[key] as? Int ?? 0)) }
+            func number(_ key: String) -> Int {
+                Int((bounds[key] as? Double) ?? Double(bounds[key] as? Int ?? 0))
+            }
             let alpha = window[kCGWindowAlpha as String] as? Double ?? 1
             let name = window[kCGWindowName as String] as? String
             var text = "\(owner)#\(pid) L\(layer) \(number("Width"))x\(number("Height"))@\(number("X")),\(number("Y"))"
-            if alpha < 1 { text += " a\(alpha)" }
-            if let name, !name.isEmpty { text += " \"\(name)\"" }
-            if let id = window[kCGWindowNumber as String] as? Int { text += " n\(id)" }
-            if isIME { text += " IME" }
+            if alpha < 1 {
+                text += " a\(alpha)"
+            }
+            if let name, !name.isEmpty {
+                text += " \"\(name)\""
+            }
+            if let id = window[kCGWindowNumber as String] as? Int {
+                text += " n\(id)"
+            }
+            if isIME {
+                text += " IME"
+            }
             entries.append(.string(text))
         }
         return .object([
@@ -324,7 +344,9 @@ final class InputMethodProbe: @unchecked Sendable {
         AXUIElementGetPid(element, &pid)
         details["pid"] = .int(Int(pid))
         for (name, attribute) in [("role", kAXRoleAttribute), ("subrole", kAXSubroleAttribute)] {
-            if let value = Self.copy(element, attribute) as? String { details[name] = .string(value) }
+            if let value = Self.copy(element, attribute) as? String {
+                details[name] = .string(value)
+            }
         }
         if let count = Self.copy(element, kAXNumberOfCharactersAttribute) as? Int {
             details["length"] = .int(count)
@@ -360,15 +382,19 @@ final class InputMethodProbe: @unchecked Sendable {
         for name in attributes where Self.markAttributeMarkers.contains(where: { name.contains($0) }) {
             guard let value = Self.copy(element, name) else { continue }
             var text = Self.describe(value)
-            if !mayReadText, CFGetTypeID(value) == CFStringGetTypeID() { text = "<\(text.count) chars>" }
+            if !mayReadText, CFGetTypeID(value) == CFStringGetTypeID() {
+                text = "<\(text.count) chars>"
+            }
             marked[name] = .string(String(text.prefix(300)))
         }
-        if !marked.isEmpty { details["markAttributes"] = .object(marked) }
+        if !marked.isEmpty {
+            details["markAttributes"] = .object(marked)
+        }
 
         if mayReadText, let caret {
             let location = max(0, caret.location - 40)
             var range = CFRange(location: location, length: caret.location - location + max(caret.length, 0) + 10)
-            if case .int(let length)? = details["length"] {
+            if case let .int(length)? = details["length"] {
                 range.length = max(0, min(range.length, length - location))
             }
             if
@@ -433,7 +459,8 @@ final class InputMethodProbe: @unchecked Sendable {
         CFPreferencesAppSynchronize(domain)
         var result: [String: JSONValue] = [:]
         func ids(_ key: String) -> JSONValue {
-            guard let list = CFPreferencesCopyAppValue(key as CFString, domain) as? [[String: Any]] else { return .null }
+            guard let list = CFPreferencesCopyAppValue(key as CFString, domain) as? [[String: Any]]
+            else { return .null }
             return .strings(list.map { entry in
                 (entry["Input Mode"] as? String)
                     ?? (entry["Bundle ID"] as? String)

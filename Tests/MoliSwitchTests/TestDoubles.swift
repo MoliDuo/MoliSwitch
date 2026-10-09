@@ -1,7 +1,5 @@
 import Foundation
-
 import MoliSwitchCore
-
 @testable import MoliSwitchApp
 
 // MARK: - Rule store
@@ -11,7 +9,9 @@ final class FakeRuleStore: RuleStore, @unchecked Sendable {
     struct Failure: Error, LocalizedError {
         let message: String
 
-        var errorDescription: String? { message }
+        var errorDescription: String? {
+            message
+        }
     }
 
     let url: URL
@@ -28,7 +28,7 @@ final class FakeRuleStore: RuleStore, @unchecked Sendable {
         rules: [AppRule] = []
     ) {
         self.url = url
-        self.storedRules = rules
+        storedRules = rules
     }
 
     var rules: [AppRule] {
@@ -177,7 +177,7 @@ final class FakeApplicationScanner: ApplicationScanning, @unchecked Sendable {
     private let delay: TimeInterval
 
     init(result: ApplicationScanResult = .empty, delay: TimeInterval = 0) {
-        self.storedResult = result
+        storedResult = result
         self.delay = delay
     }
 
@@ -255,7 +255,6 @@ final class FakeLoginItemManager: LoginItemManaging {
     }
 }
 
-
 // MARK: - Command rules
 
 /// In-memory store for command rules.
@@ -267,7 +266,7 @@ final class FakeCommandRuleStore: CommandRuleStore, @unchecked Sendable {
     private var loadError: Error?
 
     init(rules: [CommandRule] = []) {
-        self.storedRules = rules
+        storedRules = rules
     }
 
     var rules: [CommandRule] {
@@ -336,7 +335,7 @@ final class FakeFieldRuleStore: FieldRuleStore, @unchecked Sendable {
     private var loadError: Error?
 
     init(rules: [FieldRule] = []) {
-        self.storedRules = rules
+        storedRules = rules
     }
 
     var rules: [FieldRule] {
@@ -423,8 +422,8 @@ final class FakeSlashCommandAppStore: SlashCommandAppStore, @unchecked Sendable 
     private var loadError: Error?
 
     init(apps: [SlashCommandApp] = [], fileName: String = "slash-command-apps.json") {
-        self.storedApps = apps
-        self.url = URL(fileURLWithPath: "/tmp/MoliSwitchTests/" + fileName)
+        storedApps = apps
+        url = URL(fileURLWithPath: "/tmp/MoliSwitchTests/" + fileName)
     }
 
     var apps: [SlashCommandApp] {
@@ -464,7 +463,7 @@ final class FakeShiftAppRuleStore: ShiftAppRuleStore, @unchecked Sendable {
     private(set) var saveCount = 0
 
     init(rules: [ShiftAppRule] = []) {
-        self.storedRules = rules
+        storedRules = rules
     }
 
     var rules: [ShiftAppRule] {
@@ -588,7 +587,9 @@ final class FakeUsageLogger: UsageLogging, @unchecked Sendable {
         set { lock.withLock { enabled = newValue } }
     }
 
-    var events: [UsageEvent] { lock.withLock { stored } }
+    var events: [UsageEvent] {
+        lock.withLock { stored }
+    }
 
     func events(named name: String) -> [UsageEvent] {
         events.filter { $0.name == name }

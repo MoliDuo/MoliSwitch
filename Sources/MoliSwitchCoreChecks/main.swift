@@ -1,5 +1,5 @@
-import MoliSwitchCore
 import Foundation
+import MoliSwitchCore
 
 @main
 struct CoreChecks {
@@ -62,7 +62,7 @@ struct CoreChecks {
     private static func testJSONRuleStoreLoadsEmptyRulesWhenFileDoesNotExist() throws {
         let store = JSONRuleStore(url: temporaryRulesURL())
 
-        try expectEqual(try store.load(), [])
+        try expectEqual(store.load(), [])
     }
 
     private static func testJSONRuleStorePersistsRules() throws {
@@ -79,12 +79,12 @@ struct CoreChecks {
                 applicationName: "WeChat",
                 inputSourceID: "com.apple.inputmethod.SCIM.Shuangpin",
                 inputSourceName: "Shuangpin - Simplified"
-            )
+            ),
         ]
 
         try store.save(rules)
 
-        try expectEqual(try store.load(), rules)
+        try expectEqual(store.load(), rules)
     }
 
     private static func temporaryRulesURL() -> URL {
@@ -243,10 +243,10 @@ struct CoreChecks {
             // empty rule set.
         }
 
-        try expectEqual(try Data(contentsOf: url), corrupt)
+        try expectEqual(Data(contentsOf: url), corrupt)
         try expectEqual(store.fileExists, true)
         try expectEqual(
-            try JSONRuleStore(url: directory.appendingPathComponent("missing.json")).load(),
+            JSONRuleStore(url: directory.appendingPathComponent("missing.json")).load(),
             []
         )
     }
@@ -306,7 +306,10 @@ struct CoreChecks {
 
         try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.apple.Safari", field: safari), true)
         try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.google.Chrome", field: omnibox), true)
-        try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.google.Chrome", field: pageSearch), false)
+        try expectEqual(
+            AddressBarDetector.isAddressBar(bundleIdentifier: "com.google.Chrome", field: pageSearch),
+            false
+        )
         try expectEqual(AddressBarDetector.isAddressBar(bundleIdentifier: "com.apple.Notes", field: safari), false)
     }
 
@@ -336,7 +339,7 @@ struct CoreChecks {
         }
     }
 
-    private static func expectNil<T>(_ actual: T?) throws {
+    private static func expectNil(_ actual: (some Any)?) throws {
         if let actual {
             throw CheckFailure("Expected nil, got \(actual)")
         }
