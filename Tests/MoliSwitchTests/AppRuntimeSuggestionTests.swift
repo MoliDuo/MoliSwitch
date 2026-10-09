@@ -11,7 +11,8 @@ final class AppRuntimeSuggestionTests: XCTestCase {
     private let chinese = "com.apple.inputmethod.SCIM.Shuangpin"
 
     private func letter(_ app: String, source: String, mono: Double) -> String {
-        "{\"app\":\"\(app)\",\"category\":\"letter\",\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"printable\",\"keyCode\":0,\"mono\":\(mono),\"shifted\":false}"
+        "{\"app\":\"\(app)\",\"category\":\"letter\",\"current\":\"\(source)\",\"e\":\"key\","
+            + "\"key\":\"printable\",\"keyCode\":0,\"mono\":\(mono),\"shifted\":false}"
     }
 
     /// Visits where the user picks ABC as soon as the application is active.
@@ -20,8 +21,10 @@ final class AppRuntimeSuggestionTests: XCTestCase {
         return (0..<9).flatMap { index -> [String] in
             let start = Double(index) * 100_000
             return [
-                "{\"app\":\"\(app)\",\"appName\":\"\(name)\",\"e\":\"appFocus\",\"mono\":\(start),\"terminal\":\(context)}",
-                "{\"app\":\"\(app)\",\"e\":\"manualSwitch\",\"from\":\"\(us)\",\"mono\":\(start + 500),\"to\":\"\(abc)\"}",
+                "{\"app\":\"\(app)\",\"appName\":\"\(name)\",\"e\":\"appFocus\","
+                    + "\"mono\":\(start),\"terminal\":\(context)}",
+                "{\"app\":\"\(app)\",\"e\":\"manualSwitch\",\"from\":\"\(us)\","
+                    + "\"mono\":\(start + 500),\"to\":\"\(abc)\"}",
             ] + (0..<5).map { letter(app, source: abc, mono: start + 1000 + Double($0) * 100) }
         }
     }
@@ -35,12 +38,14 @@ final class AppRuntimeSuggestionTests: XCTestCase {
         apps.enumerated().flatMap { index, app -> [String] in
             let start = Double(index) * 100_000
             func slash(_ mono: Double) -> String {
-                "{\"app\":\"\(app)\",\"category\":\"symbol\",\"current\":\"\(chinese)\",\"e\":\"key\",\"key\":\"printable\",\"keyCode\":44,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":true}"
+                "{\"app\":\"\(app)\",\"category\":\"symbol\",\"current\":\"\(chinese)\",\"e\":\"key\","
+                    + "\"key\":\"printable\",\"keyCode\":44,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":true}"
             }
             return [
                 "{\"app\":\"\(app)\",\"appName\":\"Notes\",\"e\":\"appFocus\",\"mono\":\(start),\"terminal\":null}",
                 slash(start + 1000),
-                "{\"app\":\"\(app)\",\"category\":null,\"current\":\"\(chinese)\",\"e\":\"key\",\"key\":\"backspace\",\"keyCode\":51,\"mono\":\(start + 1500),\"shifted\":false}",
+                "{\"app\":\"\(app)\",\"category\":null,\"current\":\"\(chinese)\",\"e\":\"key\","
+                    + "\"key\":\"backspace\",\"keyCode\":51,\"mono\":\(start + 1500),\"shifted\":false}",
                 slash(start + 2000),
             ]
         }

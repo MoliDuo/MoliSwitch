@@ -1,5 +1,9 @@
 import Foundation
 
+// The analyzer and its log reader are one long type for now; splitting them
+// into files is a change of its own, so the size rules are off for them.
+// swiftlint:disable file_length
+
 /// Reads the usage log and suggests rules that match how the user really
 /// switches. Nothing is changed here; the suggestions are only shown.
 ///
@@ -15,7 +19,7 @@ import Foundation
 /// Shift is judged key by key: a key typed in Chinese with Shift held that
 /// was deleted and typed again, a key switched to English that was deleted at
 /// once, and switching back to English just after letting go of Shift.
-public struct UsageAnalyzer: Sendable {
+public struct UsageAnalyzer: Sendable { // swiftlint:disable:this type_body_length
     public struct Thresholds: Sendable {
         /// Visits corrected to the same input source before a rule is suggested.
         public var minimumCorrections = 8
@@ -196,10 +200,11 @@ public struct UsageAnalyzer: Sendable {
         var deleted = 0
     }
 
+    fileprivate enum PendingShiftKind { case passedInChinese, switched }
+
     fileprivate struct PendingShiftKey {
-        enum Kind { case passedInChinese, switched }
         var id: ShiftKeyID
-        var kind: Kind
+        var kind: PendingShiftKind
         var mono: Double
         var deleted = false
     }
@@ -552,11 +557,13 @@ public struct UsageAnalyzer: Sendable {
                   })
             else { continue }
             let label = key.signature.suggestedLabel
+            let fieldName = key.signature.identifier ?? key.signature.descriptor ?? ""
+            let share = percent(top.value, of: total)
             result.append(
                 RuleSuggestion(
-                    id: "field:\(key.bundleIdentifier):\(key.signature.role):\(key.signature.identifier ?? key.signature.descriptor ?? "")=\(top.key)",
+                    id: "field:\(key.bundleIdentifier):\(key.signature.role):\(fieldName)=\(top.key)",
                     title: "\(appName(key.bundleIdentifier)) 的“\(label)”用 \(name(top.key))",
-                    evidence: "在这个输入框里敲了 \(total) 个字母键，\(top.value) 个（\(percent(top.value, of: total))）是在 \(name(top.key)) 下敲的；"
+                    evidence: "在这个输入框里敲了 \(total) 个字母键，\(top.value) 个（\(share)）是在 \(name(top.key)) 下敲的；"
                         + "App 默认是 \(current.target(for: key.bundleIdentifier).map(name) ?? "未设置")。",
                     action: .addFieldRule(
                         bundleIdentifier: key.bundleIdentifier,
@@ -584,6 +591,7 @@ public struct UsageAnalyzer: Sendable {
         return top.key
     }
 
+    // swiftlint:disable:next function_body_length
     private func shiftSuggestions(_ reader: Reader, current: CurrentRules) -> [RuleSuggestion] {
         func appName(_ bundle: String) -> String {
             reader.applicationNames[bundle] ?? bundle

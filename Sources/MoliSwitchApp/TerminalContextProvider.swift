@@ -165,9 +165,10 @@ private final class TerminalTabInspector: @unchecked Sendable {
         Diagnostics.record(.terminal, .debug, "active tab of \(bundleIdentifier) asked in \(elapsed) ms")
         let tty = result?.numberOfItems ?? 0 > 0 ? result?.atIndex(1)?.stringValue : result?.stringValue
         guard error == nil, let tty, tty.hasPrefix("/dev/") else {
+            let reason = error?[NSAppleScript.errorMessage] as? String ?? "no tty in result"
             Diagnostics.record(
                 .terminal, .error,
-                "active tab of \(bundleIdentifier) unavailable: \(error?[NSAppleScript.errorMessage] as? String ?? "no tty in result"), \(elapsed) ms"
+                "active tab of \(bundleIdentifier) unavailable: \(reason), \(elapsed) ms"
             )
             return nil
         }

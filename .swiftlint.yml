@@ -12,6 +12,9 @@ disabled_rules:
   - vertical_parameter_alignment
   # Short names such as dx, dy, t, u are the natural names in curve maths.
   - identifier_name
+  # Process names, paths and log lines are raw bytes decoded leniently on purpose:
+  # a failable String(bytes:encoding:) would drop the whole value for one bad byte.
+  - optional_data_string_conversion
 
 opt_in_rules:
   - empty_count

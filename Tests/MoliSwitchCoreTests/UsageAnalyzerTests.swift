@@ -44,11 +44,13 @@ final class UsageAnalyzerTests: XCTestCase {
 
     private func terminal(_ app: String, _ names: [String], mono: Double, tty: String = "/dev/ttys001") -> String {
         let candidates = names.map { "\"\($0)\"" }.joined(separator: ",")
-        return "{\"app\":\"\(app)\",\"context\":{\"candidates\":[\(candidates)],\"tty\":\"\(tty)\"},\"e\":\"terminal\",\"mono\":\(mono),\"result\":\"found\"}"
+        return "{\"app\":\"\(app)\",\"context\":{\"candidates\":[\(candidates)],\"tty\":\"\(tty)\"},"
+            + "\"e\":\"terminal\",\"mono\":\(mono),\"result\":\"found\"}"
     }
 
     private func letter(_ app: String, source: String, mono: Double = 0) -> String {
-        "{\"app\":\"\(app)\",\"category\":\"letter\",\"chars\":\"a\",\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"printable\",\"keyCode\":0,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":false}"
+        "{\"app\":\"\(app)\",\"category\":\"letter\",\"chars\":\"a\",\"current\":\"\(source)\",\"e\":\"key\","
+            + "\"key\":\"printable\",\"keyCode\":0,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":false}"
     }
 
     private func letters(_ app: String, source: String, count: Int, from mono: Double) -> [String] {
@@ -64,15 +66,19 @@ final class UsageAnalyzerTests: XCTestCase {
         mono: Double
     ) -> String {
         let decision = switched ? "switchToEnglish(englishID: \\\"\(us)\\\")" : "pass"
-        return "{\"app\":\"\(app)\",\"category\":\"\(category)\",\"chars\":\"x\",\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"printable\",\"keyCode\":\(keyCode),\"mono\":\(mono),\"shift\":\"\(decision)\",\"shifted\":true}"
+        return "{\"app\":\"\(app)\",\"category\":\"\(category)\",\"chars\":\"x\","
+            + "\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"printable\",\"keyCode\":\(keyCode),"
+            + "\"mono\":\(mono),\"shift\":\"\(decision)\",\"shifted\":true}"
     }
 
     private func backspace(_ app: String, source: String, mono: Double) -> String {
-        "{\"app\":\"\(app)\",\"category\":null,\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"backspace\",\"keyCode\":51,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":false}"
+        "{\"app\":\"\(app)\",\"category\":null,\"current\":\"\(source)\",\"e\":\"key\","
+            + "\"key\":\"backspace\",\"keyCode\":51,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":false}"
     }
 
     private func restore(_ app: String, mono: Double) -> String {
-        "{\"app\":\"\(app)\",\"e\":\"switch\",\"from\":\"\(us)\",\"mono\":\(mono),\"ok\":true,\"reason\":\"shiftRestore\",\"to\":\"\(zh)\"}"
+        "{\"app\":\"\(app)\",\"e\":\"switch\",\"from\":\"\(us)\",\"mono\":\(mono),"
+            + "\"ok\":true,\"reason\":\"shiftRestore\",\"to\":\"\(zh)\"}"
     }
 
     /// A visit to the application: active, optionally switched at once, then typing.
@@ -244,7 +250,8 @@ final class UsageAnalyzerTests: XCTestCase {
     // MARK: - Fields
 
     private let fieldLine = """
-    {"e":"fieldFocus","app":"a.chat","field":{"role":"AXTextField","descriptor":"Terminal input","ancestors":["AXGroup"],"web":true}}
+    {"e":"fieldFocus","app":"a.chat",\
+    "field":{"role":"AXTextField","descriptor":"Terminal input","ancestors":["AXGroup"],"web":true}}
     """
 
     func testSuggestsFieldRuleFromTypingSource() {

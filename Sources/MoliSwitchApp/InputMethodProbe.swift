@@ -19,7 +19,7 @@ import MoliSwitchCore
 /// called. Everything that may be slow, above all Accessibility calls into the
 /// frontmost application, runs on a serial background queue, so the key path is
 /// never blocked by it.
-final class InputMethodProbe: @unchecked Sendable {
+final class InputMethodProbe: @unchecked Sendable { // swiftlint:disable:this type_body_length
     struct Parts: OptionSet, Sendable {
         let rawValue: Int
         static let windows = Parts(rawValue: 1 << 0)
@@ -328,6 +328,8 @@ final class InputMethodProbe: @unchecked Sendable {
 
     private static let markAttributeMarkers = ["Mark", "Composition", "Insertion", "Edit", "TextInput", "Input"]
 
+    // A diagnostic read from top to bottom; easier to follow in one piece.
+    // swiftlint:disable function_body_length cyclomatic_complexity
     /// The focused element of the whole system, with the caret, the text
     /// around it, and every attribute whose name may tell about marked text.
     private func focusedElement(mayLogText: Bool) -> [String: JSONValue] {
@@ -354,7 +356,7 @@ final class InputMethodProbe: @unchecked Sendable {
         var caret: CFRange?
         if let value = Self.copy(element, kAXSelectedTextRangeAttribute), CFGetTypeID(value) == AXValueGetTypeID() {
             var range = CFRange()
-            if AXValueGetValue(value as! AXValue, .cfRange, &range) {
+            if AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cfRange, &range) {
                 caret = range
                 details["caret"] = .int(range.location)
                 details["selection"] = .int(range.length)
@@ -426,6 +428,8 @@ final class InputMethodProbe: @unchecked Sendable {
         return details
     }
 
+    // swiftlint:enable function_body_length cyclomatic_complexity
+
     private static func copy(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
@@ -434,19 +438,19 @@ final class InputMethodProbe: @unchecked Sendable {
 
     private static func element(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
         guard let value = copy(element, attribute), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
-        return (value as! AXUIElement)
+        return unsafeDowncast(value, to: AXUIElement.self)
     }
 
     private static func describe(_ value: CFTypeRef) -> String {
         if CFGetTypeID(value) == AXValueGetTypeID() {
-            let axValue = value as! AXValue
+            let axValue = unsafeDowncast(value, to: AXValue.self)
             var range = CFRange()
             if AXValueGetType(axValue) == .cfRange, AXValueGetValue(axValue, .cfRange, &range) {
                 return "range(\(range.location),\(range.length))"
             }
         }
         if CFGetTypeID(value) == AXUIElementGetTypeID() {
-            let element = value as! AXUIElement
+            let element = unsafeDowncast(value, to: AXUIElement.self)
             return "element(\(copy(element, kAXRoleAttribute) as? String ?? "?"))"
         }
         return String(describing: value)

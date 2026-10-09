@@ -2,6 +2,9 @@ import Foundation
 import MoliSwitchCore
 @testable import MoliSwitchApp
 
+// Every test double in one place, so the tests share them.
+// swiftlint:disable file_length
+
 // MARK: - Rule store
 
 /// In-memory rule store with injectable load and save failures.

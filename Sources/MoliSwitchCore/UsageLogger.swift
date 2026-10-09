@@ -11,7 +11,8 @@ public protocol UsageLogging: AnyObject, Sendable {
 public final class NullUsageLogger: UsageLogging {
     public var isEnabled: Bool {
         get { false }
-        set {}
+        // Stays off whatever is asked.
+        set { _ = newValue }
     }
 
     public init() {}

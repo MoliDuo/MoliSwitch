@@ -2,7 +2,12 @@ import AppKit
 import Foundation
 import MoliSwitchCore
 
+// AppRuntime still holds the whole app state in one class; splitting it into
+// files is a change of its own, so the size rules are off for it.
+// swiftlint:disable file_length
+
 @MainActor
+// swiftlint:disable:next type_body_length
 final class AppRuntime: ObservableObject {
     static let showMenuBarIconKey = "showMenuBarIcon"
     static let chineseInputSourceIDKey = "chineseInputSourceID"
@@ -1783,7 +1788,8 @@ final class AppRuntime: ObservableObject {
             if shiftDecision != .pass {
                 Diagnostics.record(
                     .shift, .debug,
-                    "key \(String(describing: key)) (\(category?.rawValue ?? "-")) in \(app.bundleIdentifier) with \(currentID ?? "nil"): \(String(describing: shiftDecision))"
+                    "key \(String(describing: key)) (\(category?.rawValue ?? "-")) in \(app.bundleIdentifier)"
+                        + " with \(currentID ?? "nil"): \(String(describing: shiftDecision))"
                 )
             }
         }
@@ -1909,7 +1915,8 @@ final class AppRuntime: ObservableObject {
         let state = slashCommandTracker.stateDescription
         Diagnostics.record(
             .slash, .debug,
-            "key \(String(describing: key)) in \(app.bundleIdentifier) with \(currentID ?? "nil"): \(String(describing: decision)), now \(state)"
+            "key \(String(describing: key)) in \(app.bundleIdentifier) with \(currentID ?? "nil"):"
+                + " \(String(describing: decision)), now \(state)"
         )
 
         switch decision {
@@ -3178,11 +3185,12 @@ final class AppRuntime: ObservableObject {
         sysctlbyname("hw.model", nil, &size, nil, 0)
         var model = [CChar](repeating: 0, count: max(size, 1))
         sysctlbyname("hw.model", &model, &size, nil, 0)
+        let hardware = String(decoding: model.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
         return [
             "version": .optional(info?["CFBundleShortVersionString"] as? String),
             "build": .optional(info?["CFBundleVersion"] as? String),
             "macOS": .string(ProcessInfo.processInfo.operatingSystemVersionString),
-            "hardware": .string(String(cString: model)),
+            "hardware": .string(hardware),
             "locale": .string(Locale.current.identifier),
             "languages": .strings(Locale.preferredLanguages),
             "timeZone": .string(TimeZone.current.identifier),
