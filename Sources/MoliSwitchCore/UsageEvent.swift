@@ -114,8 +114,8 @@ public struct UsageEvent: Equatable, Sendable {
         return line
     }
 
-    /// For example 2026-10-02T14:03:21.482+08:00.
-    public static func timestamp(_ date: Date, timeZone: TimeZone = .current) -> String {
+    /// For example 2026-10-02T14:03:21.482+08:00, in Singapore time unless told otherwise.
+    public static func timestamp(_ date: Date, timeZone: TimeZone = MoliTime.zone) -> String {
         date.formatted(
             Date.ISO8601FormatStyle(
                 dateSeparator: .dash,

@@ -47,7 +47,7 @@ struct SuggestionsPage: View {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(applied.title)
-                                Text(applied.appliedAt.formatted(date: .abbreviated, time: .shortened))
+                                Text(MoliTime.display(applied.appliedAt))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

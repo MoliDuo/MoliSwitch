@@ -162,7 +162,7 @@ public final class JSONLUsageLogger: UsageLogging, @unchecked Sendable {
 
     private func removeExpiredFiles() {
         guard retentionDays > 0 else { return }
-        let calendar = Calendar.current
+        let calendar = MoliTime.calendar
         guard let limit = calendar.date(byAdding: .day, value: -retentionDays, to: Date()) else { return }
         let oldestDay = Self.day(of: limit)
 
@@ -175,9 +175,9 @@ public final class JSONLUsageLogger: UsageLogging, @unchecked Sendable {
         }
     }
 
-    /// YYYY-MM-DD in local time.
+    /// YYYY-MM-DD in Singapore time.
     static func day(of date: Date) -> String {
-        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let parts = MoliTime.calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 }
