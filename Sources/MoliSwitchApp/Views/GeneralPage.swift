@@ -65,7 +65,7 @@ struct GeneralPage: View {
 }
 
 enum AppInfo {
-    static let name = "MoliSwitch"
+    static let name = "Moli Switch"
 
     static var version: String {
         let info = Bundle.main.infoDictionary

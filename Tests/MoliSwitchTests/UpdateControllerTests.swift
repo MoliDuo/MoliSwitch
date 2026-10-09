@@ -41,4 +41,13 @@ final class UpdateControllerTests: XCTestCase {
         controller.stop()
         controller.stop()
     }
+
+    @MainActor
+    func testRefusesToUpdateFromADiskImageOrATranslocatedCopy() {
+        XCTAssertNotNil(UpdateController.blockingReason(forBundlePath: "/Volumes/Moli Switch/MoliSwitch.app"))
+        XCTAssertNotNil(UpdateController.blockingReason(
+            forBundlePath: "/private/var/folders/x/AppTranslocation/1234/d/MoliSwitch.app"
+        ))
+        XCTAssertNil(UpdateController.blockingReason(forBundlePath: "/Applications/MoliSwitch.app"))
+    }
 }
