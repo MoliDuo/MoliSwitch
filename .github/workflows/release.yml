@@ -1,167 +1,190 @@
-name: Build and Verify
+name: release
 
-# 只负责“构建并验证”，绝不接触 Release。发布由 publish.yml 通过 workflow_run 托管，
-# 这样可取消的构建与不可中断的发布会话彼此隔离。
+# Pushing a tag vX.Y.Z publishes that version (MoliSpec 006 §6.4, release.mode: manual).
+# Order (§6.5): build → verify → draft → upload → check main has nothing newer → publish → verify the live feed.
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    tags: ["v*.*.*"]
 
-# 默认仅需读取权限：这一层不写任何仓库内容。
 permissions:
   contents: read
 
-# 同一分支上的新构建取消旧构建。
+# Releases run one at a time and are never cancelled: a cancelled run leaves half a release.
 concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+  group: release
+  cancel-in-progress: false
 
 env:
-  APP_NAME: MoliSwitch
-  # 版本统一由本工作流的编号推导：显示版本 0.2.<run_number>，构建号 <run>.<attempt>。
-  VERSION: 0.2.${{ github.run_number }}
-  BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
-  TAG: build-${{ github.run_number }}-${{ github.run_attempt }}
-  # 固定版本的 Sparkle SPM 产物（含 bin/ 工具与 Sparkle.framework），带校验和下载。
   SPARKLE_VERSION: 2.10.0
   SPARKLE_TOOLS_SHA256: 17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959
 
 jobs:
-  checks:
-    name: Checks and tests
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Show toolchain
-        run: |
-          swift --version
-          xcodebuild -version || true
-
-      - name: Run core checks
-        run: swift run MoliSwitchCoreChecks
-
-      - name: Run unit tests
-        run: swift test
-
   build:
-    name: Build and verify package
-    runs-on: macos-latest
-    needs:
-      - checks
-
+    runs-on: macos-26
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - name: Show toolchain
-        run: |
-          swift --version
-          xcodebuild -version || true
-
-      - name: Fail fast when the update public key is not configured
+      - name: Check the tag matches VERSION
+        id: version
         run: |
           set -euo pipefail
-          if grep -qE 'REPLACE_WITH_SPARKLE_ED25519_PUBLIC_KEY' Config/SparklePublicKey.txt; then
-            echo "Config/SparklePublicKey.txt 仍是占位公钥，无法产出可自动更新的安装包。" >&2
-            echo "请把组织共用的 Sparkle 公钥写入 Config/SparklePublicKey.txt 后再构建。" >&2
-            echo "详见 README 的「Sparkle 密钥」一节。" >&2
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::标签 $GITHUB_REF_NAME 和 VERSION 文件里的 $version 不一致。"
             exit 1
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Fetch pinned Sparkle tools
-        run: |
-          set -euo pipefail
-          archive="$RUNNER_TEMP/Sparkle-for-Swift-Package-Manager.zip"
-          curl -fsSL --retry 3 -o "$archive" \
-            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-for-Swift-Package-Manager.zip"
-          echo "$SPARKLE_TOOLS_SHA256  $archive" | shasum -a 256 -c -
-          mkdir -p "$RUNNER_TEMP/sparkle-tools"
-          ditto -x -k "$archive" "$RUNNER_TEMP/sparkle-tools"
-          chmod +x "$RUNNER_TEMP/sparkle-tools/bin/"*
-          "$RUNNER_TEMP/sparkle-tools/bin/generate_appcast" --version || true
-          echo "SPARKLE_TOOLS_DIR=$RUNNER_TEMP/sparkle-tools" >> "$GITHUB_ENV"
+      - name: Run the checks
+        run: Scripts/check.sh
 
-      # 正式版用固定的自签名证书签名，指定要求跨版本不变，辅助功能等系统授权在更新后得以保留。
-      # PR 构建不接触证书，仍用 ad-hoc 签名。
-      - name: Import code signing certificate
-        if: github.event_name != 'pull_request'
+      # The shared certificate keeps the Accessibility grant across updates (MoliSpec 007 §7.5.1).
+      - name: Import the signing certificate
         env:
           CODESIGN_P12_BASE64: ${{ secrets.CODESIGN_P12_BASE64 }}
           CODESIGN_P12_PASSWORD: ${{ secrets.CODESIGN_P12_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "$CODESIGN_P12_BASE64" ] || [ -z "$CODESIGN_P12_PASSWORD" ]; then
-            echo "缺少 CODESIGN_P12_BASE64 / CODESIGN_P12_PASSWORD，无法产出正式版。" >&2
-            echo "详见 README 的「一次性生成代码签名证书」一节。" >&2
+            echo "::error::缺少 CODESIGN_P12_BASE64 / CODESIGN_P12_PASSWORD，不能发布。"
             exit 1
           fi
-
           keychain="$RUNNER_TEMP/codesign.keychain-db"
           keychain_password="$(openssl rand -hex 24)"
           certificate="$RUNNER_TEMP/codesign.p12"
           printf '%s' "$CODESIGN_P12_BASE64" | base64 --decode > "$certificate"
-
           security create-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
           security import "$certificate" -k "$keychain" -P "$CODESIGN_P12_PASSWORD" -T /usr/bin/codesign > /dev/null
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
           rm -f "$certificate"
-          # 只传 --keychain 时，codesign 在 runner 上找不到身份，需把临时钥匙串加入搜索列表。
-          existing_keychains="$(security list-keychains -d user | tr -d '"')"
+          # codesign only finds the identity when the keychain is on the search list.
+          existing="$(security list-keychains -d user | tr -d '"')"
           # shellcheck disable=SC2086
-          security list-keychains -d user -s "$keychain" $existing_keychains
-
+          security list-keychains -d user -s "$keychain" $existing
           fingerprint="$(grep -Eo '^[0-9a-f]{40}$' Config/CodeSigningCertificate.txt)"
-          security find-identity -p codesigning "$keychain"
           if ! security find-identity -p codesigning "$keychain" | grep -qi "$fingerprint"; then
-            echo "临时钥匙串里没有指纹为 $fingerprint 的签名身份，请检查 CODESIGN_P12_BASE64 是否对应 Config/CodeSigningCertificate.txt。" >&2
+            echo "::error::证书和 Config/CodeSigningCertificate.txt 的指纹对不上。"
             exit 1
           fi
-          echo "SIGN_IDENTITY=$fingerprint" >> "$GITHUB_ENV"
-          echo "SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
-          echo "REQUIRE_SIGNING_CERTIFICATE=1" >> "$GITHUB_ENV"
+          {
+            echo "SIGN_IDENTITY=$fingerprint"
+            echo "SIGN_KEYCHAIN=$keychain"
+          } >> "$GITHUB_ENV"
 
-      - name: Build ZIP and DMG
-        run: ./Scripts/package-release.sh
+      - name: Package the app
+        run: Scripts/package-release.sh
 
-      - name: Verify package
-        run: ./Scripts/verify-package.sh
+      - name: Check the package
+        env:
+          REQUIRE_SIGNING_CERTIFICATE: "1"
+        run: Scripts/verify-package.sh
 
-      - name: Remove signing keychain
-        if: always() && github.event_name != 'pull_request'
+      - name: Remove the signing keychain
+        if: always()
         run: security delete-keychain "$RUNNER_TEMP/codesign.keychain-db" 2> /dev/null || true
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: MoliSwitch-macOS
-          path: |
-            .build/dist/MoliSwitch-macOS.zip
-            .build/dist/MoliSwitch-macOS.dmg
-            .build/dist/checksums.txt
-            .build/dist/build-manifest.json
+          name: dist
+          path: .build/dist/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
-      - name: Report publish eligibility
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          REF_NAME: ${{ github.ref }}
+  release:
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: dist
+          path: .build/dist
+
+      - name: Fetch the pinned Sparkle tools
         run: |
           set -euo pipefail
-          if [ "$REF_NAME" = "refs/heads/main" ] && [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "构建 $TAG 具备发布资格（main 分支手动构建）。"
-          elif [ "$REF_NAME" = "refs/heads/main" ] && [ "$EVENT_NAME" = "push" ]; then
-            echo "构建 $TAG 具备发布资格（main 分支 push）。"
-          elif [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "构建 $TAG 仅用于验证（PR）。"
+          archive="$RUNNER_TEMP/sparkle.zip"
+          curl -fsSL --retry 3 -o "$archive" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-for-Swift-Package-Manager.zip"
+          echo "$SPARKLE_TOOLS_SHA256  $archive" | shasum -a 256 -c -
+          ditto -x -k "$archive" "$RUNNER_TEMP/sparkle-tools"
+          chmod +x "$RUNNER_TEMP/sparkle-tools/bin/"*
+          echo "SPARKLE_TOOLS_DIR=$RUNNER_TEMP/sparkle-tools" >> "$GITHUB_ENV"
+
+      - name: Generate and sign the update feed
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: Scripts/generate-appcast.sh
+
+      - name: Write the release notes
+        run: Scripts/release-notes.sh > "$RUNNER_TEMP/notes.md"
+
+      - name: Create the draft and upload the assets
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "::error::$GITHUB_REF_NAME 已经发布过，不覆盖。"
+              exit 1
+            fi
           else
-            echo "构建 $TAG 仅用于验证（非 main 分支）。"
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+              --title "Moli Switch $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
           fi
+          gh release upload "$GITHUB_REF_NAME" --clobber .build/dist/*
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name'
+
+      # §6.5.4: publishing an older build than main would roll users back.
+      - name: Check main has nothing newer than the tag
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
+          if [ "$main_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::main 已经到了 ${main_sha}，比 $GITHUB_REF_NAME 新。草稿保留，重新发版。"
+            exit 1
+          fi
+
+      - name: Publish
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+
+      - name: Check the live feed
+        run: |
+          set -euo pipefail
+          feed="$RUNNER_TEMP/appcast.xml"
+          for attempt in $(seq 1 10); do
+            if curl -fsSL -o "$feed" "https://github.com/$GH_REPO/releases/latest/download/appcast.xml" \
+              && grep -qF "sparkle:shortVersionString>$VERSION<" "$feed"; then
+              break
+            fi
+            echo "第 $attempt 次没有拿到新的更新源，稍后重试。"
+            sleep 6
+          done
+          grep -qF "sparkle:shortVersionString>$VERSION<" "$feed" \
+            || { echo "::error::线上更新源的版本不是 ${VERSION}。"; exit 1; }
+          grep -qF "/download/$GITHUB_REF_NAME/" "$feed" \
+            || { echo "::error::线上更新源的下载地址没有指向 ${GITHUB_REF_NAME}。"; exit 1; }
+          cmp -s "$feed" .build/dist/appcast.xml \
+            || { echo "::error::线上更新源和刚签名的不一致。"; exit 1; }
+          zip_url="$(sed -n 's|.*url="\([^"]*\.zip\)".*|\1|p' "$feed" | head -n 1)"
+          code="$(curl -sL -o /dev/null -w '%{http_code}' "$zip_url")"
+          [ "$code" = "200" ] || { echo "::error::更新包下载失败（HTTP ${code}）：$zip_url"; exit 1; }
+          echo "::notice::已发布 Moli Switch ${VERSION}，线上更新源已核对。"
