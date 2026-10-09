@@ -99,10 +99,15 @@ final class UpdateController: NSObject, ObservableObject {
         canCheckForUpdatesObservation = nil
     }
 
-    /// Message shown instead of starting a check, or nil when a check may run.
+    /// Message shown instead of starting a check, or nil when a check may run
+    /// (MoliSpec 7.4.5: not from a disk image or a translocated copy).
     var blockingReason: String? {
-        if hostBundle.bundlePath.hasPrefix("/Volumes/") {
-            return "MoliSwitch 正在只读磁盘映像中运行，请先把它拖到“应用程序”文件夹，然后再检查更新。"
+        Self.blockingReason(forBundlePath: hostBundle.bundlePath)
+    }
+
+    static func blockingReason(forBundlePath path: String) -> String? {
+        if path.hasPrefix("/Volumes/") || path.contains("/AppTranslocation/") {
+            return "请先把 " + AppInfo.name + " 移到「应用程序」文件夹，再检查更新。"
         }
 
         return nil
@@ -117,6 +122,7 @@ final class UpdateController: NSObject, ObservableObject {
             alert.informativeText = reason
             alert.alertStyle = .warning
             alert.addButton(withTitle: "好")
+            NSApp.activate()
             alert.runModal()
             return
         }

@@ -3,7 +3,9 @@ import Foundation
 /// An application in which a slash typed at the start of the input switches to
 /// the English input source, because it starts a command there.
 public struct SlashCommandApp: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { bundleIdentifier }
+    public var id: String {
+        bundleIdentifier
+    }
 
     public var bundleIdentifier: String
     public var applicationName: String

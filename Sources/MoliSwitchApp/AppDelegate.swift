@@ -1,6 +1,6 @@
 import AppKit
-import MoliSwitchCore
 import Combine
+import MoliSwitchCore
 import SwiftUI
 
 @MainActor
@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     ) {
         self.defaults = defaults
         self.ruleStore = ruleStore
-        self.coordinator = SingleInstanceCoordinator(
+        coordinator = SingleInstanceCoordinator(
             lock: SingleInstanceLock(
                 url: ruleStore.url
                     .deletingLastPathComponent()
@@ -300,7 +300,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.removeAllItems()
         menu.addItem(makeRememberFieldItem())
         menu.addItem(.separator())
-        menu.addItem(makeMenuItem(title: "打开 " + Self.appName + "…", action: #selector(showWindowFromMenu), keyEquivalent: ","))
+        menu.addItem(makeMenuItem(
+            title: "打开 " + Self.appName + "…",
+            action: #selector(showWindowFromMenu),
+            keyEquivalent: ","
+        ))
         menu.addItem(makeMenuItem(title: "检查更新…", action: #selector(checkForUpdatesFromMenu)))
         menu.addItem(.separator())
         menu.addItem(makeMenuItem(title: "关于 " + Self.appName, action: #selector(showAboutPanel)))
@@ -311,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// user was typing in still has keyboard focus.
     private func makeRememberFieldItem() -> NSMenuItem {
         switch runtime?.fieldCaptureState() ?? .noField {
-        case .ready(let applicationName, let inputSourceName):
+        case let .ready(applicationName, inputSourceName):
             return makeMenuItem(
                 title: "记住当前输入框（" + applicationName + " · " + inputSourceName + "）",
                 action: #selector(rememberFocusedField)

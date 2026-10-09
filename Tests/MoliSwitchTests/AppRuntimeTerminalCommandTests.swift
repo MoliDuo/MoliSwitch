@@ -1,8 +1,6 @@
 import Foundation
-import XCTest
-
 import MoliSwitchCore
-
+import XCTest
 @testable import MoliSwitchApp
 
 final class AppRuntimeTerminalCommandTests: XCTestCase {
@@ -75,7 +73,7 @@ final class AppRuntimeTerminalCommandTests: XCTestCase {
     }
 
     @MainActor
-    func testActivatingTheTerminalUsesTheProgramInTheActiveTab() async {
+    func testActivatingTheTerminalUsesTheProgramInTheActiveTab() {
         let fixture = makeTerminalFixture()
         defer { fixture.runtime.stop() }
         fixture.terminal.run(["claude"])
@@ -124,7 +122,7 @@ final class AppRuntimeTerminalCommandTests: XCTestCase {
     }
 
     @MainActor
-    func testDeniedAccessFallsBackToTheAppRule() async {
+    func testDeniedAccessFallsBackToTheAppRule() {
         let fixture = makeTerminalFixture()
         defer { fixture.runtime.stop() }
         fixture.terminal.result = .denied
@@ -176,7 +174,7 @@ final class AppRuntimeTerminalCommandTests: XCTestCase {
     }
 
     @MainActor
-    func testAddingEditingAndRemovingCommandRules() async {
+    func testAddingEditingAndRemovingCommandRules() {
         let fixture = makeFixture(sources: [TestInputSources.us, TestInputSources.shuangpin])
 
         XCTAssertTrue(fixture.runtime.addCommandRule("  /usr/local/bin/codex "))
@@ -187,14 +185,17 @@ final class AppRuntimeTerminalCommandTests: XCTestCase {
 
         fixture.runtime.setInputSourceID(AppRuntime.englishRuleID, forCommand: "codex")
         XCTAssertEqual(fixture.commandStore.rules.first?.inputSourceID, AppRuntime.englishRuleID)
-        XCTAssertEqual(fixture.runtime.selectedInputSourceID(for: fixture.runtime.commandRuleSet.rules[0]), AppRuntime.englishRuleID)
+        XCTAssertEqual(
+            fixture.runtime.selectedInputSourceID(for: fixture.runtime.commandRuleSet.rules[0]),
+            AppRuntime.englishRuleID
+        )
 
         fixture.runtime.removeCommandRule("CODEX")
         XCTAssertEqual(fixture.commandStore.rules, [])
     }
 
     @MainActor
-    func testUnreadableCommandRulesPauseEditing() async {
+    func testUnreadableCommandRulesPauseEditing() {
         let fixture = makeFixture()
         fixture.commandStore.failLoading(with: FakeRuleStore.Failure(message: "broken"))
 

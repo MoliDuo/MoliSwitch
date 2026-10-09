@@ -78,7 +78,7 @@ public struct ShiftEnglishTracker: Equatable, Sendable {
     }
 
     public mutating func shiftReleased(currentID: String?) -> Decision {
-        guard case .switched(let previousID, let englishID, let restoresOnRelease) = state else { return .pass }
+        guard case let .switched(previousID, englishID, restoresOnRelease) = state else { return .pass }
         state = .idle
         guard restoresOnRelease else { return .pass }
         return currentID == englishID ? .restore(inputSourceID: previousID) : .pass

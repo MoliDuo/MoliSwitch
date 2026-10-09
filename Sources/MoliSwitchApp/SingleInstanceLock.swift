@@ -2,9 +2,9 @@ import Foundation
 import MoliSwitchCore
 
 #if canImport(Darwin)
-import Darwin
+    import Darwin
 #else
-import Glibc
+    import Glibc
 #endif
 
 /// Non-blocking advisory lock that keeps a single running instance of the app.

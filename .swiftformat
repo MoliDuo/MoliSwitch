@@ -1,0 +1,16 @@
+# SwiftFormat options (Scripts/check.sh runs the pinned version).
+--swift-version 6.0
+--indent 4
+--max-width 120
+--wrap-arguments before-first
+--wrap-parameters before-first
+--wrap-collections before-first
+--closing-paren balanced
+--self remove
+--strip-unused-args closure-only
+--header ignore
+--import-grouping testable-last
+--ranges no-space
+--trailing-commas collections-only
+--disable redundantReturn
+--exclude .build

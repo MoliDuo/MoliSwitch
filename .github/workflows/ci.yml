@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # A commit the merge queue landed on main is the very commit the queue already tested (same SHA),
+  # so the push run skips the checks instead of repeating them. Direct pushes run everything.
+  verified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      skip: ${{ steps.queue.outputs.skip }}
+    steps:
+      - id: queue
+        uses: MoliDuo/MoliKit/actions/verified@9b799ce70581440f1598ece62c068dd0b881b955 # v1.2.1
+
+  # Scripts/check.sh: format, lint, build with warnings as errors, unit tests.
+  check:
+    needs: verified
+    if: needs.verified.outputs.skip != 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Show the toolchain
+        run: swift --version
+      - run: Scripts/check.sh
+
+  gitleaks:
+    needs: verified
+    if: needs.verified.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The official image, not gitleaks-action (paid for organizations).
+      - uses: MoliDuo/MoliKit/actions/gitleaks@9b799ce70581440f1598ece62c068dd0b881b955 # v1.2.1
+
+  # The app as users get it: package it (ad-hoc signed, no secrets) and run the same
+  # package checks the release runs.
+  build:
+    needs: verified
+    if: needs.verified.outputs.skip != 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Package the app
+        run: Scripts/package-release.sh
+      - name: Check the package
+        run: Scripts/verify-package.sh
+
+  ci-gate:
+    if: always()
+    needs: [verified, check, gitleaks, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: MoliDuo/MoliKit/actions/ci-gate@9b799ce70581440f1598ece62c068dd0b881b955 # v1.2.1
+        with:
+          needs: ${{ toJSON(needs) }}

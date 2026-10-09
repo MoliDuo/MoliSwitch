@@ -101,16 +101,18 @@ public struct SlashCommandTracker: Equatable, Sendable {
     }
 
     public var isInCommand: Bool {
-        if case .command = state { return true }
+        if case .command = state {
+            return true
+        }
         return false
     }
 
     /// A short description of the state for diagnostics, without any text.
     public var stateDescription: String {
         switch state {
-        case .idle(let start):
+        case let .idle(start):
             return "idle(\(start))"
-        case .command(_, _, let typedCount, let guessed):
+        case let .command(_, _, typedCount, guessed):
             return "command(typed: \(typedCount.map(String.init) ?? "?"), guessed: \(guessed))"
         }
     }
@@ -132,7 +134,7 @@ public struct SlashCommandTracker: Equatable, Sendable {
         caretAtStart: () -> Bool?
     ) -> Decision {
         switch state {
-        case .idle(let start):
+        case let .idle(start):
             return handleOutsideCommand(
                 key,
                 start: start,
@@ -140,7 +142,7 @@ public struct SlashCommandTracker: Equatable, Sendable {
                 englishID: englishID,
                 caretAtStart: caretAtStart
             )
-        case .command(let previousID, let commandEnglishID, let typedCount, let guessed):
+        case let .command(previousID, commandEnglishID, typedCount, guessed):
             guard currentID == commandEnglishID else {
                 // The user switched by hand; the command is theirs now.
                 state = .idle(start: .no)
@@ -167,7 +169,7 @@ public struct SlashCommandTracker: Equatable, Sendable {
         let previous = state
         state = .idle(start: .yes)
 
-        if case .command(let previousID, let englishID, _, _) = previous, currentID == englishID {
+        if case let .command(previousID, englishID, _, _) = previous, currentID == englishID {
             return .restore(inputSourceID: previousID)
         }
         return .pass

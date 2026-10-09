@@ -3,7 +3,9 @@ import Foundation
 /// Input source rule for a program running in the foreground of a terminal tab,
 /// such as claude or vim.
 public struct CommandRule: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { CommandRuleSet.matchKey(command) }
+    public var id: String {
+        CommandRuleSet.matchKey(command)
+    }
 
     public var command: String
     public var inputSourceID: String

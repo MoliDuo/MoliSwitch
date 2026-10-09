@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "MoliSwitch",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v14),
     ],
     products: [
         .library(
@@ -25,11 +25,11 @@ let package = Package(
         .executable(
             name: "MoliSwitchCoreChecks",
             targets: ["MoliSwitchCoreChecks"]
-        )
+        ),
     ],
     dependencies: [
         // Pinned exactly: an updater must not change its update logic by accident.
-        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
     ],
     targets: [
         // Core stays free of AppKit and Sparkle so it can be tested anywhere.
@@ -40,14 +40,14 @@ let package = Package(
             name: "MoliSwitchApp",
             dependencies: [
                 "MoliSwitchCore",
-                .product(name: "Sparkle", package: "Sparkle")
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("OSAKit"),
                 .linkedFramework("ServiceManagement"),
-                .linkedFramework("SwiftUI")
+                .linkedFramework("SwiftUI"),
             ]
         ),
         .executableTarget(
@@ -65,6 +65,6 @@ let package = Package(
         .testTarget(
             name: "MoliSwitchTests",
             dependencies: ["MoliSwitchApp"]
-        )
+        ),
     ]
 )

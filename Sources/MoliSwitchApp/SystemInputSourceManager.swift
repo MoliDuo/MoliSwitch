@@ -184,12 +184,12 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
     private func computeAvailableInputSources() -> [InputSource] {
         let filters: [String: Any] = [
             kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String,
-            kTISPropertyInputSourceIsSelectCapable as String: true
+            kTISPropertyInputSourceIsSelectCapable as String: true,
         ]
 
         let list = TISCreateInputSourceList(filters as CFDictionary, false).takeRetainedValue()
         return (list as NSArray)
-            .map { $0 as! TISInputSource }
+            .map { unsafeDowncast($0 as AnyObject, to: TISInputSource.self) }
             .compactMap { source in
                 guard
                     let id = stringProperty(source, kTISPropertyInputSourceID),
@@ -209,10 +209,10 @@ final class SystemInputSourceManager: NSObject, InputSourceManaging {
         }
 
         let filters: [String: Any] = [
-            kTISPropertyInputSourceID as String: id
+            kTISPropertyInputSourceID as String: id,
         ]
         let list = TISCreateInputSourceList(filters as CFDictionary, false).takeRetainedValue()
-        let source = (list as NSArray).map { $0 as! TISInputSource }.first
+        let source = (list as NSArray).map { unsafeDowncast($0 as AnyObject, to: TISInputSource.self) }.first
         sourcesByID[id] = source
         return source
     }

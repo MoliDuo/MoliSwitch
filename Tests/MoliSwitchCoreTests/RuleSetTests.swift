@@ -43,7 +43,7 @@ final class RuleSetTests: XCTestCase {
             rule(bundleIdentifier: "-"),
             rule(bundleIdentifier: "com.apple.Safari", inputSourceID: ""),
             rule(bundleIdentifier: "com.apple.Notes", inputSourceID: "  "),
-            valid
+            valid,
         ]
 
         XCTAssertEqual(RuleSet(normalizing: rules).rules, [valid])
@@ -102,7 +102,7 @@ final class RuleSetTests: XCTestCase {
         var ruleSet = RuleSet(
             rules: [
                 rule(bundleIdentifier: "com.example.a"),
-                rule(bundleIdentifier: "com.example.b")
+                rule(bundleIdentifier: "com.example.b"),
             ]
         )
         let updated = rule(bundleIdentifier: "com.example.a", inputSourceID: "com.apple.keylayout.ABC")

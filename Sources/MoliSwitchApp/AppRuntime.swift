@@ -1,8 +1,13 @@
 import AppKit
-import MoliSwitchCore
 import Foundation
+import MoliSwitchCore
+
+// AppRuntime still holds the whole app state in one class; splitting it into
+// files is a change of its own, so the size rules are off for it.
+// swiftlint:disable file_length
 
 @MainActor
+// swiftlint:disable:next type_body_length
 final class AppRuntime: ObservableObject {
     static let showMenuBarIconKey = "showMenuBarIcon"
     static let chineseInputSourceIDKey = "chineseInputSourceID"
@@ -90,6 +95,7 @@ final class AppRuntime: ObservableObject {
             logUsage("setting", ["name": "showMenuBarIcon", "value": .string("\(showMenuBarIcon)")])
         }
     }
+
     /// Whether what happens is written to the usage log on this Mac.
     @Published var usageLoggingEnabled: Bool {
         didSet {
@@ -109,6 +115,7 @@ final class AppRuntime: ObservableObject {
             refreshFieldObservation()
         }
     }
+
     /// Whether command rules apply in Terminal and iTerm2.
     @Published var terminalSwitchingEnabled: Bool {
         didSet {
@@ -118,6 +125,7 @@ final class AppRuntime: ObservableObject {
             updateTerminalPolling(for: currentApplication)
         }
     }
+
     /// The chosen Chinese input source, or automaticInputSourceID.
     @Published var chineseInputSourceSelection: String {
         didSet {
@@ -128,6 +136,7 @@ final class AppRuntime: ObservableObject {
             adoptRole(Self.chineseRuleID, forRulesUsing: previous)
         }
     }
+
     /// The chosen English input source, or automaticInputSourceID.
     @Published var englishInputSourceSelection: String {
         didSet {
@@ -138,44 +147,61 @@ final class AppRuntime: ObservableObject {
             adoptRole(Self.englishRuleID, forRulesUsing: previous)
         }
     }
+
     /// Whether the address bar of a browser switches to its own input source.
     @Published var addressBarSwitchingEnabled: Bool {
         didSet {
             guard addressBarSwitchingEnabled != oldValue else { return }
             defaults.set(addressBarSwitchingEnabled, forKey: Self.addressBarSwitchingEnabledKey)
-            logUsage("setting", ["name": "addressBarSwitchingEnabled", "value": .string("\(addressBarSwitchingEnabled)")])
+            logUsage(
+                "setting",
+                ["name": "addressBarSwitchingEnabled", "value": .string("\(addressBarSwitchingEnabled)")]
+            )
             refreshFieldObservation()
         }
     }
+
     /// The input source of browser address bars: a role or an input source.
     @Published var addressBarInputSourceSelection: String {
         didSet {
             guard addressBarInputSourceSelection != oldValue else { return }
             defaults.set(addressBarInputSourceSelection, forKey: Self.addressBarInputSourceIDKey)
-            logUsage("setting", ["name": "addressBarInputSourceSelection", "value": .string("\(addressBarInputSourceSelection)")])
+            logUsage(
+                "setting",
+                ["name": "addressBarInputSourceSelection", "value": .string("\(addressBarInputSourceSelection)")]
+            )
             refreshFieldObservation()
         }
     }
+
     /// Whether a slash at the start of the input switches to the English input
     /// source in the applications of slashCommandApps.
     @Published var slashCommandSwitchingEnabled: Bool {
         didSet {
             guard slashCommandSwitchingEnabled != oldValue else { return }
             defaults.set(slashCommandSwitchingEnabled, forKey: Self.slashCommandSwitchingEnabledKey)
-            logUsage("setting", ["name": "slashCommandSwitchingEnabled", "value": .string("\(slashCommandSwitchingEnabled)")])
+            logUsage(
+                "setting",
+                ["name": "slashCommandSwitchingEnabled", "value": .string("\(slashCommandSwitchingEnabled)")]
+            )
             updateKeyMonitoring()
             refreshFieldObservation()
         }
     }
+
     /// Whether a space ends a slash command, like Return does.
     @Published var slashCommandRestoresOnSpace: Bool {
         didSet {
             guard slashCommandRestoresOnSpace != oldValue else { return }
             defaults.set(slashCommandRestoresOnSpace, forKey: Self.slashCommandRestoresOnSpaceKey)
-            logUsage("setting", ["name": "slashCommandRestoresOnSpace", "value": .string("\(slashCommandRestoresOnSpace)")])
+            logUsage(
+                "setting",
+                ["name": "slashCommandRestoresOnSpace", "value": .string("\(slashCommandRestoresOnSpace)")]
+            )
             slashCommandTracker.restoresOnSpace = slashCommandRestoresOnSpace
         }
     }
+
     /// Whether characters typed with Shift held are typed with the English
     /// input source, as globalShiftOptions or the application's rule says.
     @Published var shiftEnglishEnabled: Bool {
@@ -189,6 +215,7 @@ final class AppRuntime: ObservableObject {
             updateKeyMonitoring()
         }
     }
+
     /// Whether letting go of Shift switches back to the input source used before.
     @Published var shiftRestoresOnRelease: Bool {
         didSet {
@@ -197,6 +224,7 @@ final class AppRuntime: ObservableObject {
             logUsage("setting", ["name": "shiftRestoresOnRelease", "value": .string("\(shiftRestoresOnRelease)")])
         }
     }
+
     /// The keys that switch to English with Shift held, in applications
     /// without a rule of their own.
     @Published var shiftEnglishKeyCodes: Set<Int> {
@@ -209,6 +237,7 @@ final class AppRuntime: ObservableObject {
             )
         }
     }
+
     /// What applications without a rule switch to: noSwitchInputSourceID, a
     /// role, or an input source.
     @Published var defaultInputSourceSelection: String {
@@ -257,7 +286,7 @@ final class AppRuntime: ObservableObject {
     private var hasStarted = false
     private var hasStopped = false
 
-    // Bookkeeping for the usage log.
+    /// Bookkeeping for the usage log.
     /// The input source this app asked for last, to tell its own switches from
     /// the user's when the system reports a change.
     private var pendingSelfSwitch: (id: String, mono: Double)?
@@ -342,7 +371,7 @@ final class AppRuntime: ObservableObject {
         self.store = store
         self.commandStore = commandStore
         self.fieldStore = fieldStore
-        self.suggestionLinesProvider = suggestionLines ?? UsageAnalyzer.linesOfUsageLog
+        suggestionLinesProvider = suggestionLines ?? UsageAnalyzer.linesOfUsageLog
         self.slashCommandAppStore = slashCommandAppStore
         self.shiftAppRuleStore = shiftAppRuleStore
         self.shiftExcludedAppStore = shiftExcludedAppStore
@@ -363,37 +392,37 @@ final class AppRuntime: ObservableObject {
         self.defaults = defaults
         self.updateController = updateController
         self.ownBundleIdentifier = ownBundleIdentifier
-        self.showMenuBarIcon = defaults.object(forKey: Self.showMenuBarIconKey) as? Bool ?? true
-        self.usageLoggingEnabled = defaults.object(forKey: Self.usageLoggingEnabledKey) as? Bool ?? true
-        self.terminalSwitchingEnabled = defaults.object(forKey: Self.terminalSwitchingEnabledKey) as? Bool ?? true
-        self.chineseInputSourceSelection = defaults.string(forKey: Self.chineseInputSourceIDKey)
+        showMenuBarIcon = defaults.object(forKey: Self.showMenuBarIconKey) as? Bool ?? true
+        usageLoggingEnabled = defaults.object(forKey: Self.usageLoggingEnabledKey) as? Bool ?? true
+        terminalSwitchingEnabled = defaults.object(forKey: Self.terminalSwitchingEnabledKey) as? Bool ?? true
+        chineseInputSourceSelection = defaults.string(forKey: Self.chineseInputSourceIDKey)
             ?? Self.automaticInputSourceID
-        self.englishInputSourceSelection = defaults.string(forKey: Self.englishInputSourceIDKey)
+        englishInputSourceSelection = defaults.string(forKey: Self.englishInputSourceIDKey)
             ?? Self.automaticInputSourceID
-        self.defaultInputSourceSelection = defaults.string(forKey: Self.defaultInputSourceIDKey)
+        defaultInputSourceSelection = defaults.string(forKey: Self.defaultInputSourceIDKey)
             ?? Self.noSwitchInputSourceID
-        self.addressBarSwitchingEnabled = defaults.object(forKey: Self.addressBarSwitchingEnabledKey) as? Bool ?? true
-        self.addressBarInputSourceSelection = defaults.string(forKey: Self.addressBarInputSourceIDKey)
+        addressBarSwitchingEnabled = defaults.object(forKey: Self.addressBarSwitchingEnabledKey) as? Bool ?? true
+        addressBarInputSourceSelection = defaults.string(forKey: Self.addressBarInputSourceIDKey)
             ?? Self.englishRuleID
-        self.slashCommandSwitchingEnabled = defaults.object(forKey: Self.slashCommandSwitchingEnabledKey) as? Bool
+        slashCommandSwitchingEnabled = defaults.object(forKey: Self.slashCommandSwitchingEnabledKey) as? Bool
             ?? true
         let restoresOnSpace = defaults.bool(forKey: Self.slashCommandRestoresOnSpaceKey)
-        self.slashCommandRestoresOnSpace = restoresOnSpace
-        self.slashCommandTracker = SlashCommandTracker(restoresOnSpace: restoresOnSpace)
-        self.shiftEnglishEnabled = defaults.bool(forKey: Self.shiftEnglishEnabledKey)
-        self.shiftRestoresOnRelease = defaults.object(forKey: Self.shiftRestoresOnReleaseKey) as? Bool ?? true
+        slashCommandRestoresOnSpace = restoresOnSpace
+        slashCommandTracker = SlashCommandTracker(restoresOnSpace: restoresOnSpace)
+        shiftEnglishEnabled = defaults.bool(forKey: Self.shiftEnglishEnabledKey)
+        shiftRestoresOnRelease = defaults.object(forKey: Self.shiftRestoresOnReleaseKey) as? Bool ?? true
         if let keyCodes = defaults.array(forKey: Self.shiftEnglishKeyCodesKey) as? [Int] {
-            self.shiftEnglishKeyCodes = Set(keyCodes)
+            shiftEnglishKeyCodes = Set(keyCodes)
         } else {
             let categories = defaults.stringArray(forKey: Self.shiftEnglishCategoriesKey)
                 .map { Set($0.compactMap(ShiftKeyCategory.init(rawValue:))) }
                 ?? Set(ShiftKeyCategory.allCases)
-            self.shiftEnglishKeyCodes = ShiftEnglishOptions(categories: categories, restoresOnRelease: true).keyCodes
+            shiftEnglishKeyCodes = ShiftEnglishOptions(categories: categories, restoresOnRelease: true).keyCodes
         }
-        self.accessibilityTrusted = focusedFieldProvider.isTrusted
-        self.switchCount = switchCounter.count
-        self.launchAtLoginStatus = loginItemManager.status
-        self.inputSourceIndicatorEnabled = inputSourceIndicator.isEnabled
+        accessibilityTrusted = focusedFieldProvider.isTrusted
+        switchCount = switchCounter.count
+        launchAtLoginStatus = loginItemManager.status
+        inputSourceIndicatorEnabled = inputSourceIndicator.isEnabled
 
         usageLogger.isEnabled = usageLoggingEnabled
         // Lines of the system log, such as key decisions, go to the usage log too.
@@ -401,7 +430,11 @@ final class AppRuntime: ObservableObject {
             usageLogger.log(
                 UsageEvent(
                     "diag",
-                    ["category": .string(category.rawValue), "level": .string(level.rawValue), "message": .string(message)]
+                    [
+                        "category": .string(category.rawValue),
+                        "level": .string(level.rawValue),
+                        "message": .string(message),
+                    ]
                 )
             )
         }
@@ -512,7 +545,7 @@ final class AppRuntime: ObservableObject {
     @discardableResult
     private func loadCommandRules() -> Bool {
         do {
-            commandRuleSet = CommandRuleSet(normalizing: try commandStore.load())
+            commandRuleSet = try CommandRuleSet(normalizing: commandStore.load())
             commandRuleEditingEnabled = true
             return true
         } catch {
@@ -525,7 +558,7 @@ final class AppRuntime: ObservableObject {
     @discardableResult
     private func loadFieldRules() -> Bool {
         do {
-            fieldRuleSet = FieldRuleSet(normalizing: try fieldStore.load())
+            fieldRuleSet = try FieldRuleSet(normalizing: fieldStore.load())
             fieldRuleEditingEnabled = true
             return true
         } catch {
@@ -538,7 +571,7 @@ final class AppRuntime: ObservableObject {
     @discardableResult
     private func loadSlashCommandApps() -> Bool {
         do {
-            slashCommandApps = SlashCommandAppList(normalizing: try slashCommandAppStore.load())
+            slashCommandApps = try SlashCommandAppList(normalizing: slashCommandAppStore.load())
             slashCommandAppEditingEnabled = true
             return true
         } catch {
@@ -551,7 +584,7 @@ final class AppRuntime: ObservableObject {
     @discardableResult
     private func loadShiftAppRules() -> Bool {
         do {
-            var rules = ShiftAppRuleList(normalizing: try shiftAppRuleStore.load())
+            var rules = try ShiftAppRuleList(normalizing: shiftAppRuleStore.load())
             if !defaults.bool(forKey: Self.shiftExcludedAppsMigratedKey),
                let migrated = try migrateShiftExcludedApps(into: rules)
             {
@@ -575,9 +608,14 @@ final class AppRuntime: ObservableObject {
         guard let excluded = try? shiftExcludedAppStore.load() else { return nil }
         var candidate = rules
         for app in SlashCommandAppList(normalizing: excluded).apps
-        where candidate.rule(for: app.bundleIdentifier) == nil {
+            where candidate.rule(for: app.bundleIdentifier) == nil
+        {
             candidate.set(
-                ShiftAppRule(bundleIdentifier: app.bundleIdentifier, applicationName: app.applicationName, options: .off)
+                ShiftAppRule(
+                    bundleIdentifier: app.bundleIdentifier,
+                    applicationName: app.applicationName,
+                    options: .off
+                )
             )
         }
         if candidate != rules {
@@ -587,19 +625,18 @@ final class AppRuntime: ObservableObject {
     }
 
     func revealRulesFileInFinder() {
-        let url: URL
-        if !ruleEditingEnabled {
-            url = store.url
+        let url: URL = if !ruleEditingEnabled {
+            store.url
         } else if !commandRuleEditingEnabled {
-            url = commandStore.url
+            commandStore.url
         } else if !fieldRuleEditingEnabled {
-            url = fieldStore.url
+            fieldStore.url
         } else if !slashCommandAppEditingEnabled {
-            url = slashCommandAppStore.url
+            slashCommandAppStore.url
         } else if !shiftAppRuleEditingEnabled {
-            url = shiftAppRuleStore.url
+            shiftAppRuleStore.url
         } else {
-            url = store.url
+            store.url
         }
         let fileManager = FileManager.default
 
@@ -627,12 +664,14 @@ final class AppRuntime: ObservableObject {
         var result: [InstalledApplication] = []
 
         for application in installedApplications
-        where seenBundleIdentifiers.insert(application.bundleIdentifier).inserted {
+            where seenBundleIdentifiers.insert(application.bundleIdentifier).inserted
+        {
             result.append(application)
         }
 
         for rule in ruleSet.rules
-        where seenBundleIdentifiers.insert(rule.bundleIdentifier).inserted {
+            where seenBundleIdentifiers.insert(rule.bundleIdentifier).inserted
+        {
             let name = rule.applicationName.trimmingCharacters(in: .whitespacesAndNewlines)
             result.append(
                 InstalledApplication(
@@ -648,7 +687,8 @@ final class AppRuntime: ObservableObject {
             + shiftAppRules.rules.map { ($0.bundleIdentifier, $0.applicationName) }
             + fieldRuleSet.rules.map { ($0.bundleIdentifier, $0.applicationName) }
         for (bundleIdentifier, name) in otherApps
-        where seenBundleIdentifiers.insert(bundleIdentifier).inserted {
+            where seenBundleIdentifiers.insert(bundleIdentifier).inserted
+        {
             result.append(
                 InstalledApplication(
                     name: name,
@@ -744,7 +784,7 @@ final class AppRuntime: ObservableObject {
             }.value
 
             guard let self, !Task.isCancelled else { return }
-            self.finishScan(with: result)
+            finishScan(with: result)
         }
     }
 
@@ -882,7 +922,7 @@ final class AppRuntime: ObservableObject {
     }
 
     private func inputSourceChoices(selectedID: String, savedName: String?) -> [InputSourceChoice] {
-        let hiddenIDs = Set([effectiveChineseInputSource?.id, effectiveEnglishInputSource?.id].compactMap { $0 })
+        let hiddenIDs = Set([effectiveChineseInputSource?.id, effectiveEnglishInputSource?.id].compactMap(\.self))
         var choices = inputSources
             .filter { !hiddenIDs.contains($0.id) || $0.id == selectedID }
             .map { InputSourceChoice(id: $0.id, name: $0.name) }
@@ -937,7 +977,7 @@ final class AppRuntime: ObservableObject {
             )
         } else if
             ruleSet.rule(forBundleIdentifier: application.bundleIdentifier)?.inputSourceID
-                == inputSourceID
+            == inputSourceID
         {
             // Re-selecting the input source that is already saved, but currently
             // unavailable, keeps the existing rule.
@@ -1004,7 +1044,7 @@ final class AppRuntime: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 guard !Task.isCancelled, let self else { return }
-                await self.refreshSuggestions()
+                await refreshSuggestions()
                 try? await Task.sleep(for: .seconds(6 * 3600))
             }
         }
@@ -1073,7 +1113,7 @@ final class AppRuntime: ObservableObject {
     func applySuggestion(_ suggestion: RuleSuggestion) -> Bool {
         let change: AppliedSuggestion.Change
         switch suggestion.action {
-        case .setAppRule(let bundleIdentifier, let applicationName, let inputSourceID):
+        case let .setAppRule(bundleIdentifier, applicationName, inputSourceID):
             guard ruleEditingEnabled,
                   let target = ruleTarget(forPickerValue: roleOrID(inputSourceID))
             else { return false }
@@ -1090,7 +1130,7 @@ final class AppRuntime: ObservableObject {
             commit(candidate)
             guard ruleSet == candidate else { return false }
             change = .appRule(bundleIdentifier: bundleIdentifier, previous: previous)
-        case .addFieldRule(let bundleIdentifier, let applicationName, let signature, let inputSourceID):
+        case let .addFieldRule(bundleIdentifier, applicationName, signature, inputSourceID):
             guard fieldRuleEditingEnabled,
                   let target = ruleTarget(forPickerValue: roleOrID(inputSourceID)),
                   fieldRuleSet.rule(forBundleIdentifier: bundleIdentifier, matching: signature) == nil
@@ -1107,7 +1147,7 @@ final class AppRuntime: ObservableObject {
             candidate.upsert(rule)
             guard commitFieldRules(candidate) else { return false }
             change = .fieldRule(id: rule.id)
-        case .setCommandRule(let command, let inputSourceID):
+        case let .setCommandRule(command, inputSourceID):
             let name = CommandRuleSet.normalizedCommand(command)
             guard commandRuleEditingEnabled, !name.isEmpty,
                   let target = ruleTarget(forPickerValue: roleOrID(inputSourceID))
@@ -1119,15 +1159,23 @@ final class AppRuntime: ObservableObject {
             )
             guard commitCommandRules(candidate) else { return false }
             change = .commandRule(command: name, previous: previous)
-        case .setShiftKey(let bundleIdentifier, let applicationName, let keyCode, let enabled):
-            guard let previous = changeShiftOptions(bundleIdentifier: bundleIdentifier, applicationName: applicationName, {
-                $0.set(keyCode: keyCode, on: enabled)
-            }) else { return false }
+        case let .setShiftKey(bundleIdentifier, applicationName, keyCode, enabled):
+            guard let previous = changeShiftOptions(
+                bundleIdentifier: bundleIdentifier,
+                applicationName: applicationName,
+                {
+                    $0.set(keyCode: keyCode, on: enabled)
+                }
+            ) else { return false }
             change = .shiftOptions(bundleIdentifier: bundleIdentifier, previous: previous)
-        case .setShiftRestore(let bundleIdentifier, let applicationName, let enabled):
-            guard let previous = changeShiftOptions(bundleIdentifier: bundleIdentifier, applicationName: applicationName, {
-                $0.restoresOnRelease = enabled
-            }) else { return false }
+        case let .setShiftRestore(bundleIdentifier, applicationName, enabled):
+            guard let previous = changeShiftOptions(
+                bundleIdentifier: bundleIdentifier,
+                applicationName: applicationName,
+                {
+                    $0.restoresOnRelease = enabled
+                }
+            ) else { return false }
             change = .shiftOptions(bundleIdentifier: bundleIdentifier, previous: previous)
         }
 
@@ -1145,7 +1193,7 @@ final class AppRuntime: ObservableObject {
     /// Puts back what a suggestion replaced.
     func undoSuggestion(_ applied: AppliedSuggestion) {
         switch applied.change {
-        case .appRule(let bundleIdentifier, let previous):
+        case let .appRule(bundleIdentifier, previous):
             guard ruleEditingEnabled else { return }
             var candidate = ruleSet
             if let previous {
@@ -1154,9 +1202,9 @@ final class AppRuntime: ObservableObject {
                 candidate.remove(bundleIdentifier: bundleIdentifier)
             }
             commit(candidate)
-        case .fieldRule(let id):
+        case let .fieldRule(id):
             removeFieldRule(id)
-        case .commandRule(let command, let previous):
+        case let .commandRule(command, previous):
             guard commandRuleEditingEnabled else { return }
             var candidate = commandRuleSet
             if let previous {
@@ -1167,7 +1215,7 @@ final class AppRuntime: ObservableObject {
             if candidate != commandRuleSet {
                 commitCommandRules(candidate)
             }
-        case .shiftOptions(let bundleIdentifier, let previous):
+        case let .shiftOptions(bundleIdentifier, previous):
             if let bundleIdentifier {
                 let name = shiftAppRules.rule(for: bundleIdentifier)?.applicationName ?? bundleIdentifier
                 setShiftOptions(previous, bundleIdentifier: bundleIdentifier, applicationName: name)
@@ -1202,7 +1250,11 @@ final class AppRuntime: ObservableObject {
         let previous = shiftAppRules.rule(for: bundleIdentifier)?.options
         var options = previous ?? globalShiftOptions
         change(&options)
-        guard setShiftOptions(options, bundleIdentifier: bundleIdentifier, applicationName: applicationName ?? bundleIdentifier) else {
+        guard setShiftOptions(
+            options,
+            bundleIdentifier: bundleIdentifier,
+            applicationName: applicationName ?? bundleIdentifier
+        ) else {
             return nil
         }
         return .some(previous)
@@ -1211,8 +1263,12 @@ final class AppRuntime: ObservableObject {
     /// A rule follows the Chinese or English role when the input source is
     /// the one standing for it.
     private func roleOrID(_ inputSourceID: String) -> String {
-        if inputSourceID == effectiveChineseInputSource?.id { return Self.chineseRuleID }
-        if inputSourceID == effectiveEnglishInputSource?.id { return Self.englishRuleID }
+        if inputSourceID == effectiveChineseInputSource?.id {
+            return Self.chineseRuleID
+        }
+        if inputSourceID == effectiveEnglishInputSource?.id {
+            return Self.englishRuleID
+        }
         return inputSourceID
     }
 
@@ -1604,13 +1660,13 @@ final class AppRuntime: ObservableObject {
                 ["current": .optional(currentID), "decision": .string(String(describing: decision))]
             )
             probe("shiftReleaseProbe", ["decision": .string(String(describing: decision))], parts: .all)
-            if case .restore(let previousID) = decision {
+            if case let .restore(previousID) = decision {
                 restoreAfterShift(previousID)
             }
             return false
-        case .keyDown(let key, let shifted, let category, let detail):
+        case let .keyDown(key, shifted, category, detail):
             return handleKeyDown(key, shifted: shifted, category: category, detail: detail)
-        case .modifierChanged(let keyCode, let flags, let capsLock):
+        case let .modifierChanged(keyCode, flags, capsLock):
             handleModifierChanged(keyCode: keyCode, flags: flags, capsLock: capsLock)
             return false
         }
@@ -1629,7 +1685,9 @@ final class AppRuntime: ObservableObject {
             "isCapsKey": .bool(isCapsKey),
             "current": .optional(inputSourceManager.currentInputSource()?.id),
         ]
-        if let lastModifierMono { fields["sinceModifierMs"] = .double(mono - lastModifierMono) }
+        if let lastModifierMono {
+            fields["sinceModifierMs"] = .double(mono - lastModifierMono)
+        }
         lastModifierMono = mono
         guard isCapsKey else {
             logUsage("modifier", fields)
@@ -1637,7 +1695,9 @@ final class AppRuntime: ObservableObject {
         }
 
         fields["details"] = .object(inputSourceManager.currentInputSourceDetails().mapValues(JSONValue.string))
-        if let lastCapsMono { fields["sinceLastCapsMs"] = .double(mono - lastCapsMono) }
+        if let lastCapsMono {
+            fields["sinceLastCapsMs"] = .double(mono - lastCapsMono)
+        }
         if let pendingSelfSwitch {
             fields["sinceOwnSwitchMs"] = .double(mono - pendingSelfSwitch.mono)
         }
@@ -1667,23 +1727,23 @@ final class AppRuntime: ObservableObject {
             Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(delay))
                 guard !Task.isCancelled, let self else { return }
-                let actual = self.inputSourceManager.currentInputSource()?.id
-                self.logUsage(
+                let actual = inputSourceManager.currentInputSource()?.id
+                logUsage(
                     "capsReadback",
                     [
                         "afterMs": .int(delay), "actual": .optional(actual),
                         "before": .optional(before), "changed": .bool(actual != before),
                         "capsLock": .bool(capsLock), "capsAtMono": .double(mono),
-                        "details": .object(self.inputSourceManager.currentInputSourceDetails().mapValues(JSONValue.string)),
+                        "details": .object(inputSourceManager.currentInputSourceDetails().mapValues(JSONValue.string)),
                     ]
                 )
                 if delay == delays.last {
-                    self.logUsage(
+                    logUsage(
                         "capsSettled",
                         [
                             "before": .optional(before), "after": .optional(actual),
                             "changed": .bool(actual != before), "capsAtMono": .double(mono),
-                            "lastChangeSeenBy": .optional(self.lastObservedSourceID),
+                            "lastChangeSeenBy": .optional(lastObservedSourceID),
                         ]
                     )
                 }
@@ -1728,7 +1788,8 @@ final class AppRuntime: ObservableObject {
             if shiftDecision != .pass {
                 Diagnostics.record(
                     .shift, .debug,
-                    "key \(String(describing: key)) (\(category?.rawValue ?? "-")) in \(app.bundleIdentifier) with \(currentID ?? "nil"): \(String(describing: shiftDecision))"
+                    "key \(String(describing: key)) (\(category?.rawValue ?? "-")) in \(app.bundleIdentifier)"
+                        + " with \(currentID ?? "nil"): \(String(describing: shiftDecision))"
                 )
             }
         }
@@ -1751,14 +1812,14 @@ final class AppRuntime: ObservableObject {
         switch shiftDecision {
         case .pass:
             return holdsForSlash
-        case .switchToEnglish(let englishID):
+        case let .switchToEnglish(englishID):
             guard selectInputSourceForKeys(englishID, reason: "shift") else {
                 shiftTracker.cancel()
                 return holdsForSlash
             }
             shiftSwitchTask = releaseHeldKeys(after: effectiveSlashCommandSwitchDelay, pressed: pressed)
             return true
-        case .restore(let previousID):
+        case let .restore(previousID):
             // Shift was let go without the monitor seeing it.
             shiftRestoreHoldsKeys = true
             restoreAfterShift(previousID)
@@ -1778,28 +1839,31 @@ final class AppRuntime: ObservableObject {
             try? await Task.sleep(for: delay, tolerance: .milliseconds(1))
             guard let self else { return }
 
-            let selectedID = self.inputSourceManager.currentInputSource()?.id
+            let selectedID = inputSourceManager.currentInputSource()?.id
             if selectedID == englishID {
-                await self.restoreInputSource(previousID, reason: "shiftRestore")
+                await restoreInputSource(previousID, reason: "shiftRestore")
             } else {
                 Diagnostics.record(.shift, .info, "restore skipped, \(selectedID ?? "nil") was selected meanwhile")
-                self.logUsage(
+                logUsage(
                     "switchSkipped",
                     ["reason": "shiftRestore", "wanted": .string(previousID), "selected": .optional(selectedID)]
                 )
             }
 
-            if self.shiftRestoreHoldsKeys {
+            if shiftRestoreHoldsKeys {
                 try? await Task.sleep(for: switchDelay, tolerance: .milliseconds(1))
-                self.logUsage(
+                logUsage(
                     "heldKeysReleased",
-                    ["reason": "shiftRestore", "count": .int(self.keyEventMonitor.heldKeyCount),
-                     "current": .optional(self.inputSourceManager.currentInputSource()?.id)]
+                    [
+                        "reason": "shiftRestore",
+                        "count": .int(keyEventMonitor.heldKeyCount),
+                        "current": .optional(inputSourceManager.currentInputSource()?.id),
+                    ]
                 )
-                self.keyEventMonitor.releaseHeldKeys()
+                keyEventMonitor.releaseHeldKeys()
             }
-            self.shiftRestoreHoldsKeys = false
-            self.shiftRestoreTask = nil
+            shiftRestoreHoldsKeys = false
+            shiftRestoreTask = nil
         }
     }
 
@@ -1810,10 +1874,13 @@ final class AppRuntime: ObservableObject {
             // Without a tolerance the timer may fire 10 ms late.
             try? await Task.sleep(for: delay, tolerance: .milliseconds(1))
             if let self {
-                self.logUsage(
+                logUsage(
                     "heldKeysReleased",
-                    ["reason": "switch", "count": .int(self.keyEventMonitor.heldKeyCount),
-                     "current": .optional(self.inputSourceManager.currentInputSource()?.id)]
+                    [
+                        "reason": "switch",
+                        "count": .int(keyEventMonitor.heldKeyCount),
+                        "current": .optional(inputSourceManager.currentInputSource()?.id),
+                    ]
                 )
             }
             self?.keyEventMonitor.releaseHeldKeys()
@@ -1848,13 +1915,14 @@ final class AppRuntime: ObservableObject {
         let state = slashCommandTracker.stateDescription
         Diagnostics.record(
             .slash, .debug,
-            "key \(String(describing: key)) in \(app.bundleIdentifier) with \(currentID ?? "nil"): \(String(describing: decision)), now \(state)"
+            "key \(String(describing: key)) in \(app.bundleIdentifier) with \(currentID ?? "nil"):"
+                + " \(String(describing: decision)), now \(state)"
         )
 
         switch decision {
         case .pass:
             return false
-        case .switchToEnglish(let englishID):
+        case let .switchToEnglish(englishID):
             guard selectInputSourceForKeys(englishID, reason: "slash") else {
                 slashCommandTracker.cancelCommand()
                 return false
@@ -1862,7 +1930,7 @@ final class AppRuntime: ObservableObject {
             // Otherwise the slash would still be typed as 「、」.
             _ = releaseHeldKeys(after: effectiveSlashCommandSwitchDelay, pressed: pressed)
             return true
-        case .restore(let previousID):
+        case let .restore(previousID):
             // Return and Escape reach the application first, still typed with
             // the English input source.
             let englishID = currentID
@@ -1870,19 +1938,19 @@ final class AppRuntime: ObservableObject {
             Task { [weak self] in
                 try? await Task.sleep(for: delay)
                 guard let self else { return }
-                let selectedID = self.inputSourceManager.currentInputSource()?.id
+                let selectedID = inputSourceManager.currentInputSource()?.id
                 guard selectedID == englishID else {
                     Diagnostics.record(
                         .slash, .info,
                         "restore skipped, \(selectedID ?? "nil") was selected meanwhile"
                     )
-                    self.logUsage(
+                    logUsage(
                         "switchSkipped",
                         ["reason": "slashRestore", "wanted": .string(previousID), "selected": .optional(selectedID)]
                     )
                     return
                 }
-                await self.restoreInputSource(previousID, reason: "slashRestore")
+                await restoreInputSource(previousID, reason: "slashRestore")
             }
             return false
         }
@@ -1906,7 +1974,7 @@ final class AppRuntime: ObservableObject {
         if wasInCommand {
             logUsage("slashEnd", ["why": "focusChanged", "decision": .string(String(describing: decision))])
         }
-        if case .restore(let previousID) = decision {
+        if case let .restore(previousID) = decision {
             selectInputSourceForKeys(previousID, reason: "slashRestore")
         }
     }
@@ -2146,7 +2214,7 @@ final class AppRuntime: ObservableObject {
     /// its own entry, so an error is never hidden by a later informational message.
     var primaryStatus: StatusMessage? {
         let candidates = [storageStatus, scanStatus, inputSourceStatus, loginStatus]
-            .compactMap { $0 }
+            .compactMap(\.self)
 
         var best: StatusMessage?
         for candidate in candidates {
@@ -2178,7 +2246,7 @@ final class AppRuntime: ObservableObject {
         ) { [weak self] notification in
             guard
                 let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication
+                as? NSRunningApplication
             else {
                 return
             }
@@ -2250,7 +2318,7 @@ final class AppRuntime: ObservableObject {
         }
 
         var context: TerminalContext?
-        if case .found(let found)? = terminalContext(for: app) {
+        if case let .found(found)? = terminalContext(for: app) {
             context = found
         }
         terminalContextInEffect = context
@@ -2501,7 +2569,10 @@ final class AppRuntime: ObservableObject {
             )
         }
 
-        if addressBarSwitchingEnabled, AddressBarDetector.isAddressBar(bundleIdentifier: app.bundleIdentifier, field: field) {
+        if addressBarSwitchingEnabled, AddressBarDetector.isAddressBar(
+            bundleIdentifier: app.bundleIdentifier,
+            field: field
+        ) {
             let id = addressBarInputSourceSelection
             return ActiveRule(
                 key: "addressbar:" + app.bundleIdentifier + "=" + id,
@@ -2553,9 +2624,11 @@ final class AppRuntime: ObservableObject {
 
     private func noteTerminalContext(_ result: TerminalContextResult) -> TerminalContextResult {
         switch result {
-        case .found(let context):
+        case let .found(context):
             terminalUnavailableLogged = false
-            if terminalAccessDenied { terminalAccessDenied = false }
+            if terminalAccessDenied {
+                terminalAccessDenied = false
+            }
             if lastTerminalContext != context {
                 lastTerminalContext = context
                 logUsage("terminal", ["result": "found", "context": Self.jsonValue(of: context)])
@@ -2588,7 +2661,7 @@ final class AppRuntime: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(interval))
                 guard !Task.isCancelled, let self else { return }
-                await self.pollTerminal()
+                await pollTerminal()
             }
         }
     }
@@ -2612,7 +2685,7 @@ final class AppRuntime: ObservableObject {
         let result = noteTerminalContext(asked)
 
         switch result {
-        case .found(let found):
+        case let .found(found):
             terminalContextInEffect = found
         case .denied:
             terminalContextInEffect = nil
@@ -2647,10 +2720,18 @@ final class AppRuntime: ObservableObject {
             fields["sinceOwnSwitchMs"] = .double(mono - pendingSelfSwitch.mono)
             fields["ownSwitchTarget"] = .string(pendingSelfSwitch.id)
         }
-        if let lastCapsMono { fields["sinceCapsMs"] = .double(mono - lastCapsMono) }
-        if let lastModifierMono { fields["sinceModifierMs"] = .double(mono - lastModifierMono) }
+        if let lastCapsMono {
+            fields["sinceCapsMs"] = .double(mono - lastCapsMono)
+        }
+        if let lastModifierMono {
+            fields["sinceModifierMs"] = .double(mono - lastModifierMono)
+        }
         logUsage("systemInputSourceChanged", fields)
-        probe("sourceChangeProbe", ["from": .optional(previousID), "to": .optional(now?.id), "ownSwitch": .bool(ownSwitch)], parts: .all)
+        probe(
+            "sourceChangeProbe",
+            ["from": .optional(previousID), "to": .optional(now?.id), "ownSwitch": .bool(ownSwitch)],
+            parts: .all
+        )
 
         guard !ownSwitch, previousID != now?.id else { return }
         var manual = fields
@@ -2725,7 +2806,8 @@ final class AppRuntime: ObservableObject {
                 "shiftSwitched": .bool(shiftTracker.isSwitched),
                 "accessibility": .bool(accessibilityTrusted),
                 "capsLockOn": .bool(CGEventSource.flagsState(.combinedSessionState).contains(.maskAlphaShift)),
-                "recentCapsAgoMs": .array(recentCapsMonos.map { .double(UsageEvent.currentMonotonicMilliseconds() - $0) }),
+                "recentCapsAgoMs": .array(recentCapsMonos
+                    .map { .double(UsageEvent.currentMonotonicMilliseconds() - $0) }),
                 "keyMonitorRunning": .bool(keyEventMonitor.isRunning),
                 "keyMonitoringUnavailable": .bool(keyMonitoringUnavailable),
                 "caretIndicator": .bool(inputSourceIndicatorEnabled),
@@ -2758,7 +2840,7 @@ final class AppRuntime: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 guard !Task.isCancelled, let self else { return }
-                self.logSnapshot("heartbeat")
+                logSnapshot("heartbeat")
             }
         }
     }
@@ -2767,7 +2849,11 @@ final class AppRuntime: ObservableObject {
     /// why it failed, and what the system says shortly after.
     private func selectLogged(_ id: String, reason: String, rule: ActiveRule? = nil, from: String?) -> Bool {
         switchSequence += 1
-        probe("switchProbe", ["seq": .int(switchSequence), "phase": "before", "reason": .string(reason), "to": .string(id)], parts: .all)
+        probe(
+            "switchProbe",
+            ["seq": .int(switchSequence), "phase": "before", "reason": .string(reason), "to": .string(id)],
+            parts: .all
+        )
         let start = ContinuousClock.now
         pendingSelfSwitch = (id, UsageEvent.currentMonotonicMilliseconds())
         let selected = inputSourceManager.selectInputSource(id: id)
@@ -2807,7 +2893,13 @@ final class AppRuntime: ObservableObject {
         for delay in [0, 30, 80, 150, 300, 1000] {
             probe(
                 "switchProbe",
-                ["seq": .int(switchSequence), "phase": "after", "afterMs": .int(delay), "reason": .string(reason), "target": .string(target)],
+                [
+                    "seq": .int(switchSequence),
+                    "phase": "after",
+                    "afterMs": .int(delay),
+                    "reason": .string(reason),
+                    "target": .string(target),
+                ],
                 parts: delay == 150 || delay == 1000 ? .all : [.windows],
                 afterMs: delay
             )
@@ -2816,8 +2908,8 @@ final class AppRuntime: ObservableObject {
             Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(delay))
                 guard let self else { return }
-                let actual = self.inputSourceManager.currentInputSource()?.id
-                self.logUsage(
+                let actual = inputSourceManager.currentInputSource()?.id
+                logUsage(
                     "switchVerify",
                     [
                         "target": .string(target), "actual": .optional(actual),
@@ -2860,14 +2952,23 @@ final class AppRuntime: ObservableObject {
         let sequence = switchSequence
         probe(
             "switchProbe",
-            ["seq": .int(sequence), "phase": "before", "reason": .string(reason), "to": .string(id), "method": "shortcut"],
+            [
+                "seq": .int(sequence),
+                "phase": "before",
+                "reason": .string(reason),
+                "to": .string(id),
+                "method": "shortcut",
+            ],
             parts: .all
         )
         let start = ContinuousClock.now
         pendingSelfSwitch = (id, UsageEvent.currentMonotonicMilliseconds())
         guard let shortcut = keyEventMonitor.postSelectPreviousInputSourceShortcut() else {
             pendingSelfSwitch = nil
-            logUsage("switchShortcutUnavailable", ["reason": .string(reason), "to": .string(id), "from": .optional(from)])
+            logUsage(
+                "switchShortcutUnavailable",
+                ["reason": .string(reason), "to": .string(id), "from": .optional(from)]
+            )
             selectInputSourceForKeys(id, reason: reason)
             return
         }
@@ -2881,7 +2982,9 @@ final class AppRuntime: ObservableObject {
             try? await Task.sleep(for: .milliseconds(3), tolerance: .milliseconds(1))
             polls += 1
             current = inputSourceManager.currentInputSource()?.id
-            if current != from { break }
+            if current != from {
+                break
+            }
         }
         let elapsed = Self.milliseconds(of: ContinuousClock.now - start)
         var fields: [String: JSONValue] = [
@@ -2957,7 +3060,9 @@ final class AppRuntime: ObservableObject {
         fields["keySeq"] = .int(keySequence)
         fields["current"] = .optional(currentID)
         fields["afterOwnSwitch"] = .bool(afterOwnSwitch)
-        if let lastOwnSwitchMono { fields["sinceOwnSwitchMs"] = .double(mono - lastOwnSwitchMono) }
+        if let lastOwnSwitchMono {
+            fields["sinceOwnSwitchMs"] = .double(mono - lastOwnSwitchMono)
+        }
         probe("keyProbe", fields + ["afterMs": 60], parts: afterOwnSwitch ? .all : [.windows], afterMs: 60)
         if mono - lastKeyFieldProbeMono > 500 {
             lastKeyFieldProbeMono = mono
@@ -2967,7 +3072,7 @@ final class AppRuntime: ObservableObject {
         keyPauseProbeTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled, let self else { return }
-            self.probe("keyPauseProbe", fields, parts: [.windows, .field, .processes])
+            probe("keyPauseProbe", fields, parts: [.windows, .field, .processes])
         }
     }
 
@@ -2988,7 +3093,9 @@ final class AppRuntime: ObservableObject {
     /// Whether what is typed in the current field may be written to the log:
     /// not in password fields, with secure input on, or in password managers.
     private func mayLogTypedText(secureInput: Bool = false) -> Bool {
-        if secureInput || focusedField?.subrole == "AXSecureTextField" { return false }
+        if secureInput || focusedField?.subrole == "AXSecureTextField" {
+            return false
+        }
         let id = currentApplication?.bundleIdentifier.lowercased() ?? ""
         return !Self.unloggedTextApps.contains { id.contains($0.lowercased()) }
     }
@@ -3006,7 +3113,9 @@ final class AppRuntime: ObservableObject {
         ]
         if let lastCapsMono {
             let since = UsageEvent.currentMonotonicMilliseconds() - lastCapsMono
-            if since < 2000 { fields["sinceCapsMs"] = .double(since) }
+            if since < 2000 {
+                fields["sinceCapsMs"] = .double(since)
+            }
         }
         if let detail {
             fields["keyCode"] = .int(detail.keyCode)
@@ -3041,7 +3150,7 @@ final class AppRuntime: ObservableObject {
     private func logFieldText(reason: String) {
         guard usageLoggingEnabled, let app = currentApplication, mayLogTypedText() else { return }
         var details = focusedFieldProvider.currentFieldDetails(includeValue: true)
-        guard details["secure"] != true, case .string(let text)? = details["value"] else { return }
+        guard details["secure"] != true, case let .string(text)? = details["value"] else { return }
         let identity = "\(app.bundleIdentifier)|\(details["identifier"] ?? .null)|\(details["windowTitle"] ?? .null)"
         guard (identity, text) != lastLoggedFieldText ?? ("", "") else { return }
         lastLoggedFieldText = (identity, text)
@@ -3064,7 +3173,9 @@ final class AppRuntime: ObservableObject {
     private static func jsonValue(of context: TerminalContext?) -> JSONValue {
         guard let context else { return .null }
         var object: [String: JSONValue] = ["tty": .string(context.tty), "candidates": .strings(context.candidates)]
-        if let title = context.remoteTitle { object["title"] = .string(title) }
+        if let title = context.remoteTitle {
+            object["title"] = .string(title)
+        }
         return .object(object)
     }
 
@@ -3074,11 +3185,12 @@ final class AppRuntime: ObservableObject {
         sysctlbyname("hw.model", nil, &size, nil, 0)
         var model = [CChar](repeating: 0, count: max(size, 1))
         sysctlbyname("hw.model", &model, &size, nil, 0)
+        let hardware = String(decoding: model.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
         return [
             "version": .optional(info?["CFBundleShortVersionString"] as? String),
             "build": .optional(info?["CFBundleVersion"] as? String),
             "macOS": .string(ProcessInfo.processInfo.operatingSystemVersionString),
-            "hardware": .string(String(cString: model)),
+            "hardware": .string(hardware),
             "locale": .string(Locale.current.identifier),
             "languages": .strings(Locale.preferredLanguages),
             "timeZone": .string(TimeZone.current.identifier),

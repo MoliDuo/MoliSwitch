@@ -1,8 +1,6 @@
 import Foundation
-import XCTest
-
 import MoliSwitchCore
-
+import XCTest
 @testable import MoliSwitchApp
 
 final class AppRuntimeShiftEnglishTests: XCTestCase {
@@ -131,7 +129,7 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
     }
 
     @MainActor
-    func testCategoriesNotChosenAreLeftAlone() async {
+    func testCategoriesNotChosenAreLeftAlone() {
         let fixture = makeShiftFixture()
         fixture.runtime.shiftEnglishKeyCodes = ShiftKey.keyCodes(in: .letter)
         XCTAssertEqual(
@@ -169,10 +167,20 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
         let fixture = makeShiftFixture()
         fixture.runtime.shiftEnglishKeyCodes = [44]
 
-        fixture.keys.press(.printable, shifted: true, category: .symbol, detail: KeyDetail(keyCode: 41, characters: ";"))
+        fixture.keys.press(
+            .printable,
+            shifted: true,
+            category: .symbol,
+            detail: KeyDetail(keyCode: 41, characters: ";")
+        )
         XCTAssertEqual(fixture.inputSources.current, TestInputSources.shuangpin)
 
-        fixture.keys.press(.printable, shifted: true, category: .symbol, detail: KeyDetail(keyCode: 44, characters: "/"))
+        fixture.keys.press(
+            .printable,
+            shifted: true,
+            category: .symbol,
+            detail: KeyDetail(keyCode: 44, characters: "/")
+        )
         XCTAssertEqual(fixture.inputSources.current, TestInputSources.us)
     }
 
@@ -282,7 +290,10 @@ final class AppRuntimeShiftEnglishTests: XCTestCase {
         let fixture = makeFixture()
         XCTAssertTrue(fixture.defaults.bool(forKey: AppRuntime.shiftExcludedAppsMigratedKey))
 
-        let broken = makeFixture(shiftExcludedApps: [SlashCommandApp(bundleIdentifier: notes.bundleIdentifier, applicationName: "Notes")])
+        let broken = makeFixture(shiftExcludedApps: [SlashCommandApp(
+            bundleIdentifier: notes.bundleIdentifier,
+            applicationName: "Notes"
+        )])
         broken.defaults.removeObject(forKey: AppRuntime.shiftExcludedAppsMigratedKey)
         broken.runtime.setShiftOptions(nil, for: makeInstalledApplication("Notes", notes.bundleIdentifier))
         broken.shiftExcludedAppStore.failLoading(with: FakeRuleStore.Failure(message: "broken"))

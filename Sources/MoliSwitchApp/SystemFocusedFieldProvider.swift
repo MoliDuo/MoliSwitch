@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
-import MoliSwitchCore
 import Foundation
+import MoliSwitchCore
 
 /// Follows keyboard focus in the frontmost application with an AXObserver.
 @MainActor
@@ -99,7 +99,7 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
             CFGetTypeID(value) == AXValueGetTypeID()
         {
             var range = CFRange()
-            if AXValueGetValue(value as! AXValue, .cfRange, &range) {
+            if AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cfRange, &range) {
                 return range.location == 0
             }
         }
@@ -119,11 +119,12 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
             return nil
         }
 
-        let element: AXUIElement
-        if let observedApplication, observedProcessIdentifier == application.processIdentifier {
-            element = observedApplication
+        let element: AXUIElement = if let observedApplication,
+                                      observedProcessIdentifier == application.processIdentifier
+        {
+            observedApplication
         } else {
-            element = Self.applicationElement(application.processIdentifier)
+            Self.applicationElement(application.processIdentifier)
         }
         return Self.element(element, kAXFocusedUIElementAttribute)
     }
@@ -183,6 +184,8 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
     /// How much of the text in a field is kept, from the end, where typing is.
     private static let maximumValueLength = 2000
 
+    // One flat list of attribute reads, each with its own check.
+    // swiftlint:disable:next cyclomatic_complexity
     static func details(of element: AXUIElement, includeValue: Bool) -> [String: JSONValue] {
         var details: [String: JSONValue] = [:]
         let strings: [(String, String)] = [
@@ -234,7 +237,7 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
             CFGetTypeID(value) == AXValueGetTypeID()
         {
             var range = CFRange()
-            if AXValueGetValue(value as! AXValue, .cfRange, &range) {
+            if AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cfRange, &range) {
                 details["caret"] = .int(range.location)
                 details["selection"] = .int(range.length)
             }
@@ -269,7 +272,7 @@ final class SystemFocusedFieldProvider: FocusedFieldProviding {
         guard let value = copyAttribute(element, attribute), CFGetTypeID(value) == AXUIElementGetTypeID() else {
             return nil
         }
-        return (value as! AXUIElement)
+        return unsafeDowncast(value, to: AXUIElement.self)
     }
 }
 

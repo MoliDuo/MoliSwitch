@@ -25,7 +25,7 @@ public enum JSONValue: Codable, Equatable, Sendable {
         } else if let value = try? container.decode([JSONValue].self) {
             self = .array(value)
         } else {
-            self = .object(try container.decode([String: JSONValue].self))
+            self = try .object(container.decode([String: JSONValue].self))
         }
     }
 
@@ -33,12 +33,12 @@ public enum JSONValue: Codable, Equatable, Sendable {
         var container = encoder.singleValueContainer()
         switch self {
         case .null: try container.encodeNil()
-        case .bool(let value): try container.encode(value)
-        case .int(let value): try container.encode(value)
-        case .double(let value): try container.encode(value)
-        case .string(let value): try container.encode(value)
-        case .array(let value): try container.encode(value)
-        case .object(let value): try container.encode(value)
+        case let .bool(value): try container.encode(value)
+        case let .int(value): try container.encode(value)
+        case let .double(value): try container.encode(value)
+        case let .string(value): try container.encode(value)
+        case let .array(value): try container.encode(value)
+        case let .object(value): try container.encode(value)
         }
     }
 
@@ -53,19 +53,27 @@ public enum JSONValue: Codable, Equatable, Sendable {
 }
 
 extension JSONValue: ExpressibleByStringLiteral {
-    public init(stringLiteral value: String) { self = .string(value) }
+    public init(stringLiteral value: String) {
+        self = .string(value)
+    }
 }
 
 extension JSONValue: ExpressibleByIntegerLiteral {
-    public init(integerLiteral value: Int) { self = .int(value) }
+    public init(integerLiteral value: Int) {
+        self = .int(value)
+    }
 }
 
 extension JSONValue: ExpressibleByBooleanLiteral {
-    public init(booleanLiteral value: Bool) { self = .bool(value) }
+    public init(booleanLiteral value: Bool) {
+        self = .bool(value)
+    }
 }
 
 extension JSONValue: ExpressibleByFloatLiteral {
-    public init(floatLiteral value: Double) { self = .double(value) }
+    public init(floatLiteral value: Double) {
+        self = .double(value)
+    }
 }
 
 /// One line of the usage log: when something happened and what.
@@ -93,7 +101,7 @@ public struct UsageEvent: Equatable, Sendable {
     }
 
     public static func currentMonotonicMilliseconds() -> Double {
-        (ProcessInfo.processInfo.systemUptime * 10_000).rounded() / 10
+        (ProcessInfo.processInfo.systemUptime * 10000).rounded() / 10
     }
 
     /// The event as one line of JSON, without a line break.
@@ -114,8 +122,8 @@ public struct UsageEvent: Equatable, Sendable {
         return line
     }
 
-    /// For example 2026-10-02T14:03:21.482+08:00.
-    public static func timestamp(_ date: Date, timeZone: TimeZone = .current) -> String {
+    /// For example 2026-10-02T14:03:21.482+08:00, in Singapore time unless told otherwise.
+    public static func timestamp(_ date: Date, timeZone: TimeZone = MoliTime.zone) -> String {
         date.formatted(
             Date.ISO8601FormatStyle(
                 dateSeparator: .dash,

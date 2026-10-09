@@ -23,7 +23,7 @@ struct InstalledApplicationScanner: ApplicationScanning {
     private let explicitRoots: [URL]?
 
     init(roots: [URL]? = nil) {
-        self.explicitRoots = roots
+        explicitRoots = roots
     }
 
     /// Search roots in priority order. When the same bundle identifier is
@@ -67,7 +67,8 @@ struct InstalledApplicationScanner: ApplicationScanning {
 
                 // Applications found in an earlier (higher priority) root are kept.
                 for application in discovered
-                where applicationsByBundleIdentifier[application.bundleIdentifier] == nil {
+                    where applicationsByBundleIdentifier[application.bundleIdentifier] == nil
+                {
                     applicationsByBundleIdentifier[application.bundleIdentifier] = application
                 }
             } else if root != personalRoot {
@@ -144,7 +145,7 @@ struct InstalledApplicationScanner: ApplicationScanning {
         ]
         .compactMap { $0.map(Self.visibleName) }
         .first { !$0.isEmpty }
-            ?? url.deletingPathExtension().lastPathComponent
+        ?? url.deletingPathExtension().lastPathComponent
 
         return InstalledApplication(
             name: name,

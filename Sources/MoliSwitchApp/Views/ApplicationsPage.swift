@@ -128,7 +128,7 @@ struct ApplicationsPage: View {
 
     @ViewBuilder
     private var content: some View {
-        if runtime.isScanning && runtime.installedApplications.isEmpty {
+        if runtime.isScanning, runtime.installedApplications.isEmpty {
             ProgressView("正在查找已安装的应用…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if runtime.filteredInstalledApplications.isEmpty {
@@ -137,7 +137,7 @@ struct ApplicationsPage: View {
                 systemImage: "magnifyingglass",
                 description: Text("换个搜索词，或在工具栏中选择“全部”。")
             )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             table
         }

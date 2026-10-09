@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-
 @testable import MoliSwitchCore
 
 final class JSONRuleStoreTests: XCTestCase {
@@ -136,7 +135,7 @@ final class JSONRuleStoreTests: XCTestCase {
                         NSUnderlyingErrorKey: NSError(
                             domain: NSCocoaErrorDomain,
                             code: NSFileReadNoSuchFileError
-                        )
+                        ),
                     ]
                 )
             )
@@ -159,7 +158,7 @@ final class JSONRuleStoreTests: XCTestCase {
                     applicationName: "WeChat",
                     inputSourceID: "com.apple.inputmethod.SCIM.Shuangpin",
                     inputSourceName: "Shuangpin - Simplified"
-                )
+                ),
             ]
 
             try store.save(rules)

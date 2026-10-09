@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-
 @testable import MoliSwitchApp
 
 final class ApplicationScannerTests: XCTestCase {
@@ -48,7 +47,7 @@ final class ApplicationScannerTests: XCTestCase {
             "CFBundleName": name,
             "CFBundleDisplayName": name,
             "CFBundlePackageType": "APPL",
-            "CFBundleExecutable": name
+            "CFBundleExecutable": name,
         ].merging(extraInfo) { _, extra in extra }
         let data = try PropertyListSerialization.data(
             fromPropertyList: plist,

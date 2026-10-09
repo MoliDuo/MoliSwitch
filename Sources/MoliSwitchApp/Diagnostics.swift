@@ -1,6 +1,6 @@
 import Foundation
-import os
 import MoliSwitchCore
+import os
 
 /// Diagnostics for slash commands, Shift and terminals. Every line goes to the
 /// system log, read with

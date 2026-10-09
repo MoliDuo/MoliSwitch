@@ -1,9 +1,7 @@
 import AppKit
 
-/// The MoliSwitch mark: a rounded square holding two opposing arrows.
-///
-/// Scripts/generate-app-icon.swift draws the same shape for the app icon;
-/// keep the two in step.
+/// The menu bar mark: a rounded square holding two opposing arrows.
+/// The app icon is the design-system one in Config/AppIcon.icns.
 enum BrandMark {
     /// Side of the square grid the coordinates below are laid out on, y down.
     private static let gridSize: CGFloat = 18

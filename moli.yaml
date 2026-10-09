@@ -1,0 +1,25 @@
+name: MoliSwitch
+id: switch
+kind: desktop
+level: L1
+
+login:
+  mode: exempt # a local menu bar utility with no server and no account
+
+deploy:
+  platform: none
+
+data:
+  db: none
+
+release:
+  kind: client
+  mode: manual
+
+exceptions:
+  - rule: "1.3"
+    reason: Bundle ID 保持 com.moli.MoliSwitch。改成 com.moliduo.switch 会让已安装的版本收不到更新，并要重新授予辅助功能和自动化权限；等下次本来就要重装时再迁移。
+    until: 2027-10-09
+  - rule: "8.9.2"
+    reason: 本机运行的菜单栏工具，没有服务端和账号，不接统一登录。
+    until: 2027-10-09

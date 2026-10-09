@@ -1,5 +1,5 @@
-import MoliSwitchCore
 import Foundation
+import MoliSwitchCore
 
 /// Keyboard input sources. Main-actor isolated because the underlying Carbon
 /// APIs are only safe to call from the main thread.
@@ -22,8 +22,13 @@ protocol InputSourceManaging: AnyObject {
 }
 
 extension InputSourceManaging {
-    func currentInputSourceDetails() -> [String: String] { [:] }
-    var lastSelectionFailure: String? { nil }
+    func currentInputSourceDetails() -> [String: String] {
+        [:]
+    }
+
+    var lastSelectionFailure: String? {
+        nil
+    }
 }
 
 /// The system bubble that shows the input source next to the caret after it

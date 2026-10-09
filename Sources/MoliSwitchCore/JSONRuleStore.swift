@@ -171,8 +171,8 @@ public struct JSONFileStore<Element: Codable & Sendable>: Sendable {
         return false
     }
 
-    // Encoders and decoders are created per call: they are cheap, and this keeps
-    // the store free of shared mutable state.
+    /// Encoders and decoders are created per call: they are cheap, and this keeps
+    /// the store free of shared mutable state.
     private static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

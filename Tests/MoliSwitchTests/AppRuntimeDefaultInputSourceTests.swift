@@ -1,8 +1,6 @@
 import Foundation
-import XCTest
-
 import MoliSwitchCore
-
+import XCTest
 @testable import MoliSwitchApp
 
 final class AppRuntimeDefaultInputSourceTests: XCTestCase {
@@ -25,7 +23,7 @@ final class AppRuntimeDefaultInputSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testDefaultIsNoSwitchSoApplicationsWithoutARuleAreLeftAlone() async {
+    func testDefaultIsNoSwitchSoApplicationsWithoutARuleAreLeftAlone() {
         let fixture = makeDefaultFixture()
 
         XCTAssertEqual(fixture.runtime.defaultInputSourceSelection, AppRuntime.noSwitchInputSourceID)
@@ -38,7 +36,7 @@ final class AppRuntimeDefaultInputSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testApplicationWithoutARuleSwitchesToTheDefaultRole() async {
+    func testApplicationWithoutARuleSwitchesToTheDefaultRole() {
         let fixture = makeDefaultFixture()
         fixture.runtime.defaultInputSourceSelection = AppRuntime.englishRuleID
 
@@ -55,7 +53,7 @@ final class AppRuntimeDefaultInputSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testApplicationWithoutARuleSwitchesToTheDefaultInputSource() async {
+    func testApplicationWithoutARuleSwitchesToTheDefaultInputSource() {
         let fixture = makeFixture(current: TestInputSources.us)
         fixture.runtime.defaultInputSourceSelection = TestInputSources.abc.id
 
@@ -67,7 +65,7 @@ final class AppRuntimeDefaultInputSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testApplicationRuleWinsOverTheDefault() async {
+    func testApplicationRuleWinsOverTheDefault() {
         let fixture = makeDefaultFixture(rules: [
             makeRule(
                 bundleIdentifier: "com.apple.Terminal",
@@ -84,7 +82,7 @@ final class AppRuntimeDefaultInputSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testNoSwitchRuleIsStoredAndKeepsTheDefaultAway() async {
+    func testNoSwitchRuleIsStoredAndKeepsTheDefaultAway() {
         let fixture = makeDefaultFixture()
         fixture.runtime.defaultInputSourceSelection = AppRuntime.englishRuleID
 
@@ -108,7 +106,7 @@ final class AppRuntimeDefaultInputSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testFollowingTheDefaultRemovesTheNoSwitchRule() async {
+    func testFollowingTheDefaultRemovesTheNoSwitchRule() {
         let fixture = makeDefaultFixture(rules: [
             makeRule(
                 bundleIdentifier: "com.apple.Terminal",
@@ -127,7 +125,7 @@ final class AppRuntimeDefaultInputSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testChangingARoleKeepsTheDefaultThatWasShownAsIt() async {
+    func testChangingARoleKeepsTheDefaultThatWasShownAsIt() {
         let fixture = makeDefaultFixture()
         fixture.runtime.defaultInputSourceSelection = TestInputSources.us.id
 
@@ -137,7 +135,7 @@ final class AppRuntimeDefaultInputSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testSwitchingBackToNoSwitchClearsTheStoredDefault() async {
+    func testSwitchingBackToNoSwitchClearsTheStoredDefault() {
         let fixture = makeDefaultFixture()
         fixture.runtime.defaultInputSourceSelection = AppRuntime.chineseRuleID
 

@@ -30,7 +30,12 @@ final class UsageAnalyzerTests: XCTestCase {
         "{\"e\":\"manualSwitch\",\"app\":\"\(app)\",\"from\":\"\(from)\",\"to\":\"\(to)\",\"mono\":\(mono)\(extra)}"
     }
 
-    private func appFocus(_ app: String, mono: Double, terminal: [String]? = nil, tty: String = "/dev/ttys001") -> String {
+    private func appFocus(
+        _ app: String,
+        mono: Double,
+        terminal: [String]? = nil,
+        tty: String = "/dev/ttys001"
+    ) -> String {
         let context = terminal.map { names in
             "{\"candidates\":[\(names.map { "\"\($0)\"" }.joined(separator: ","))],\"tty\":\"\(tty)\"}"
         } ?? "null"
@@ -39,11 +44,13 @@ final class UsageAnalyzerTests: XCTestCase {
 
     private func terminal(_ app: String, _ names: [String], mono: Double, tty: String = "/dev/ttys001") -> String {
         let candidates = names.map { "\"\($0)\"" }.joined(separator: ",")
-        return "{\"app\":\"\(app)\",\"context\":{\"candidates\":[\(candidates)],\"tty\":\"\(tty)\"},\"e\":\"terminal\",\"mono\":\(mono),\"result\":\"found\"}"
+        return "{\"app\":\"\(app)\",\"context\":{\"candidates\":[\(candidates)],\"tty\":\"\(tty)\"},"
+            + "\"e\":\"terminal\",\"mono\":\(mono),\"result\":\"found\"}"
     }
 
     private func letter(_ app: String, source: String, mono: Double = 0) -> String {
-        "{\"app\":\"\(app)\",\"category\":\"letter\",\"chars\":\"a\",\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"printable\",\"keyCode\":0,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":false}"
+        "{\"app\":\"\(app)\",\"category\":\"letter\",\"chars\":\"a\",\"current\":\"\(source)\",\"e\":\"key\","
+            + "\"key\":\"printable\",\"keyCode\":0,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":false}"
     }
 
     private func letters(_ app: String, source: String, count: Int, from mono: Double) -> [String] {
@@ -59,15 +66,19 @@ final class UsageAnalyzerTests: XCTestCase {
         mono: Double
     ) -> String {
         let decision = switched ? "switchToEnglish(englishID: \\\"\(us)\\\")" : "pass"
-        return "{\"app\":\"\(app)\",\"category\":\"\(category)\",\"chars\":\"x\",\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"printable\",\"keyCode\":\(keyCode),\"mono\":\(mono),\"shift\":\"\(decision)\",\"shifted\":true}"
+        return "{\"app\":\"\(app)\",\"category\":\"\(category)\",\"chars\":\"x\","
+            + "\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"printable\",\"keyCode\":\(keyCode),"
+            + "\"mono\":\(mono),\"shift\":\"\(decision)\",\"shifted\":true}"
     }
 
     private func backspace(_ app: String, source: String, mono: Double) -> String {
-        "{\"app\":\"\(app)\",\"category\":null,\"current\":\"\(source)\",\"e\":\"key\",\"key\":\"backspace\",\"keyCode\":51,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":false}"
+        "{\"app\":\"\(app)\",\"category\":null,\"current\":\"\(source)\",\"e\":\"key\","
+            + "\"key\":\"backspace\",\"keyCode\":51,\"mono\":\(mono),\"shift\":\"pass\",\"shifted\":false}"
     }
 
     private func restore(_ app: String, mono: Double) -> String {
-        "{\"app\":\"\(app)\",\"e\":\"switch\",\"from\":\"\(us)\",\"mono\":\(mono),\"ok\":true,\"reason\":\"shiftRestore\",\"to\":\"\(zh)\"}"
+        "{\"app\":\"\(app)\",\"e\":\"switch\",\"from\":\"\(us)\",\"mono\":\(mono),"
+            + "\"ok\":true,\"reason\":\"shiftRestore\",\"to\":\"\(zh)\"}"
     }
 
     /// A visit to the application: active, optionally switched at once, then typing.
@@ -83,7 +94,7 @@ final class UsageAnalyzerTests: XCTestCase {
         if let switchTo {
             lines.append(manual(app, from: from ?? (switchTo == zh ? us : zh), to: switchTo, mono: mono + 500))
         }
-        return lines + letters(app, source: source, count: count, from: mono + 1_000)
+        return lines + letters(app, source: source, count: count, from: mono + 1000)
     }
 
     // MARK: - Applications
@@ -112,7 +123,12 @@ final class UsageAnalyzerTests: XCTestCase {
         var lines: [String] = []
         for index in 0..<400 {
             let switches = index % 10 == 0
-            lines += visit("a.chat", at: Double(index) * 100_000, switchTo: switches ? zh : nil, typing: switches ? zh : us)
+            lines += visit(
+                "a.chat",
+                at: Double(index) * 100_000,
+                switchTo: switches ? zh : nil,
+                typing: switches ? zh : us
+            )
         }
 
         XCTAssertTrue(UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: ["a.chat": us])).isEmpty)
@@ -124,8 +140,8 @@ final class UsageAnalyzerTests: XCTestCase {
             let start = Double(index) * 100_000
             lines.append(appFocus("a.chat", mono: start))
             lines += letters("a.chat", source: us, count: 5, from: start + 100)
-            lines.append(manual("a.chat", from: us, to: zh, mono: start + 2_000))
-            lines += letters("a.chat", source: zh, count: 5, from: start + 3_000)
+            lines.append(manual("a.chat", from: us, to: zh, mono: start + 2000))
+            lines += letters("a.chat", source: zh, count: 5, from: start + 3000)
         }
 
         XCTAssertTrue(UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: ["a.chat": us])).isEmpty)
@@ -158,7 +174,7 @@ final class UsageAnalyzerTests: XCTestCase {
             lines.append(manual("a.chat", from: zh, to: us, mono: start + 525))
             lines.append(manual("a.chat", from: us, to: zh, mono: start + 600, extra: ",\"ownSwitch\":true"))
             lines.append(manual("a.chat", from: us, to: zh, mono: start + 700, extra: ",\"sinceOwnSwitchMs\":50"))
-            lines += letters("a.chat", source: us, count: 10, from: start + 1_000)
+            lines += letters("a.chat", source: us, count: 10, from: start + 1000)
         }
 
         XCTAssertTrue(UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: ["a.chat": us])).isEmpty)
@@ -170,8 +186,8 @@ final class UsageAnalyzerTests: XCTestCase {
             let start = Double(index) * 100_000
             lines.append(appFocus("a.chat", mono: start))
             lines.append(manual("a.chat", from: us, to: zh, mono: start + 500))
-            lines.append(manual("a.chat", from: zh, to: us, mono: start + 2_000))
-            lines += letters("a.chat", source: us, count: 10, from: start + 3_000)
+            lines.append(manual("a.chat", from: zh, to: us, mono: start + 2000))
+            lines += letters("a.chat", source: us, count: 10, from: start + 3000)
         }
 
         XCTAssertTrue(UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: ["a.chat": us])).isEmpty)
@@ -187,9 +203,9 @@ final class UsageAnalyzerTests: XCTestCase {
             // The shell needs no change; claude is corrected to English each time.
             lines.append(appFocus(term, mono: start, terminal: ["zsh"]))
             lines += letters(term, source: zh, count: 10, from: start + 100)
-            lines.append(terminal(term, ["claude", "node"], mono: start + 10_000))
-            lines.append(manual(term, from: zh, to: us, mono: start + 10_500))
-            lines += letters(term, source: us, count: 10, from: start + 11_000)
+            lines.append(terminal(term, ["claude", "node"], mono: start + 10000))
+            lines.append(manual(term, from: zh, to: us, mono: start + 10500))
+            lines += letters(term, source: us, count: 10, from: start + 11000)
         }
 
         let result = UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: [term: zh]))
@@ -200,8 +216,11 @@ final class UsageAnalyzerTests: XCTestCase {
 
         // Once claude has its rule, nothing more.
         XCTAssertTrue(
-            UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: [term: zh], commandTargets: ["claude": us]))
-                .isEmpty
+            UsageAnalyzer().suggestions(
+                fromLines: lines,
+                current: current(targets: [term: zh], commandTargets: ["claude": us])
+            )
+            .isEmpty
         )
     }
 
@@ -217,7 +236,7 @@ final class UsageAnalyzerTests: XCTestCase {
                 let switched = manual(term, from: zh, to: us, mono: start + 300)
                 lines.append(appFocus(term, mono: start))
                 lines += switchFirst ? [switched, found] : [found, switched]
-                lines += letters(term, source: us, count: 10, from: start + 1_000)
+                lines += letters(term, source: us, count: 10, from: start + 1000)
             }
 
             XCTAssertEqual(
@@ -231,18 +250,19 @@ final class UsageAnalyzerTests: XCTestCase {
     // MARK: - Fields
 
     private let fieldLine = """
-    {"e":"fieldFocus","app":"a.chat","field":{"role":"AXTextField","descriptor":"Terminal input","ancestors":["AXGroup"],"web":true}}
+    {"e":"fieldFocus","app":"a.chat",\
+    "field":{"role":"AXTextField","descriptor":"Terminal input","ancestors":["AXGroup"],"web":true}}
     """
 
     func testSuggestsFieldRuleFromTypingSource() {
         let lines = [appFocus("a.chat", mono: 0), fieldLine]
             + letters("a.chat", source: us, count: 95, from: 100)
-            + letters("a.chat", source: zh, count: 5, from: 20_000)
+            + letters("a.chat", source: zh, count: 5, from: 20000)
 
         let result = UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: ["a.chat": zh]))
 
         XCTAssertEqual(result.count, 1)
-        guard case .addFieldRule(let bundle, _, let signature, let source)? = result.first?.action else {
+        guard case let .addFieldRule(bundle, _, signature, source)? = result.first?.action else {
             return XCTFail("expected a field rule")
         }
         XCTAssertEqual(bundle, "a.chat")
@@ -261,10 +281,12 @@ final class UsageAnalyzerTests: XCTestCase {
         )
 
         XCTAssertTrue(
-            UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: ["a.chat": zh], fieldRules: [rule])).isEmpty
+            UsageAnalyzer().suggestions(fromLines: lines, current: current(targets: ["a.chat": zh], fieldRules: [rule]))
+                .isEmpty
         )
         XCTAssertTrue(
-            UsageAnalyzer().suggestions(fromLines: Array(lines.prefix(50)), current: current(targets: ["a.chat": zh])).isEmpty
+            UsageAnalyzer().suggestions(fromLines: Array(lines.prefix(50)), current: current(targets: ["a.chat": zh]))
+                .isEmpty
         )
     }
 
@@ -275,7 +297,7 @@ final class UsageAnalyzerTests: XCTestCase {
         [
             shifted(app, keyCode: keyCode, source: zh, mono: mono),
             backspace(app, source: zh, mono: mono + 500),
-            shifted(app, keyCode: keyCode, source: zh, mono: mono + 2_000),
+            shifted(app, keyCode: keyCode, source: zh, mono: mono + 2000),
         ]
     }
 
@@ -283,14 +305,14 @@ final class UsageAnalyzerTests: XCTestCase {
         let options = ShiftEnglishOptions(categories: [.letter], restoresOnRelease: true)
         var lines = [appFocus("a.chat", mono: 0)]
         for index in 0..<4 {
-            lines += retyped("a.chat", at: Double(index) * 100_000 + 1_000)
+            lines += retyped("a.chat", at: Double(index) * 100_000 + 1000)
         }
         for index in 0..<6 {
-            lines.append(shifted("a.chat", keyCode: 44, source: zh, mono: 1_000_000 + Double(index) * 10_000))
+            lines.append(shifted("a.chat", keyCode: 44, source: zh, mono: 1_000_000 + Double(index) * 10000))
         }
         // Another key, typed in Chinese and kept.
         for index in 0..<20 {
-            lines.append(shifted("a.chat", keyCode: 41, source: zh, mono: 2_000_000 + Double(index) * 10_000))
+            lines.append(shifted("a.chat", keyCode: 41, source: zh, mono: 2_000_000 + Double(index) * 10000))
         }
 
         let result = UsageAnalyzer().suggestions(fromLines: lines, current: current(globalShift: options))
@@ -307,7 +329,8 @@ final class UsageAnalyzerTests: XCTestCase {
         withKey.set(keyCode: 44, on: true)
         XCTAssertTrue(UsageAnalyzer().suggestions(fromLines: lines, current: current(globalShift: withKey)).isEmpty)
         XCTAssertTrue(
-            UsageAnalyzer().suggestions(fromLines: lines, current: current(shiftEnabled: false, globalShift: options)).isEmpty
+            UsageAnalyzer().suggestions(fromLines: lines, current: current(shiftEnabled: false, globalShift: options))
+                .isEmpty
         )
     }
 
@@ -316,7 +339,7 @@ final class UsageAnalyzerTests: XCTestCase {
         var lines: [String] = []
         for (index, app) in ["a.one", "a.two", "a.three", "a.one"].enumerated() {
             lines.append(appFocus(app, mono: Double(index) * 100_000))
-            lines += retyped(app, at: Double(index) * 100_000 + 1_000)
+            lines += retyped(app, at: Double(index) * 100_000 + 1000)
         }
 
         let result = UsageAnalyzer().suggestions(fromLines: lines, current: current(globalShift: options))
@@ -331,10 +354,10 @@ final class UsageAnalyzerTests: XCTestCase {
         let options = ShiftEnglishOptions(categories: [.letter], restoresOnRelease: true)
         var lines = [appFocus("a.chat", mono: 0)]
         for index in 0..<3 {
-            lines += retyped("a.chat", at: Double(index) * 100_000 + 1_000)
+            lines += retyped("a.chat", at: Double(index) * 100_000 + 1000)
         }
         for index in 0..<30 {
-            lines.append(shifted("a.chat", keyCode: 44, source: zh, mono: 1_000_000 + Double(index) * 10_000))
+            lines.append(shifted("a.chat", keyCode: 44, source: zh, mono: 1_000_000 + Double(index) * 10000))
         }
 
         XCTAssertTrue(UsageAnalyzer().suggestions(fromLines: lines, current: current(globalShift: options)).isEmpty)
@@ -376,7 +399,8 @@ final class UsageAnalyzerTests: XCTestCase {
         // Not when the application's own settings already leave it alone.
         var own = ShiftEnglishOptions.all
         own.set(keyCode: 41, on: false)
-        XCTAssertTrue(UsageAnalyzer().suggestions(fromLines: lines, current: current(shiftAppRules: ["a.chat": own])).isEmpty)
+        XCTAssertTrue(UsageAnalyzer().suggestions(fromLines: lines, current: current(shiftAppRules: ["a.chat": own]))
+            .isEmpty)
     }
 
     func testSuggestsStayingInEnglishAfterShift() {
@@ -404,7 +428,7 @@ final class UsageAnalyzerTests: XCTestCase {
             let start = Double(index) * 100_000
             lines.append(restore("a.chat", mono: start))
             if index % 2 == 0 {
-                lines.append(manual("a.chat", from: zh, to: us, mono: start + 5_000))
+                lines.append(manual("a.chat", from: zh, to: us, mono: start + 5000))
             } else {
                 lines.append(letter("a.chat", source: zh, mono: start + 100))
                 lines.append(manual("a.chat", from: zh, to: us, mono: start + 800))

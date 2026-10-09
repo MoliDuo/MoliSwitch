@@ -7,7 +7,9 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case suggestions
     case general
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -126,7 +128,7 @@ struct MainWindowView: View {
                             }
                         }
                     } else if showsKeyMonitoring {
-                        NoticeRow(text: "暂时无法读取按键。可以在“辅助功能”里关掉再打开 MoliSwitch 试试。") {
+                        NoticeRow(text: "暂时无法读取按键。可以在“辅助功能”里关掉再打开 Moli Switch 试试。") {
                             Button("打开系统设置…") {
                                 runtime.openAccessibilitySystemSettings()
                             }

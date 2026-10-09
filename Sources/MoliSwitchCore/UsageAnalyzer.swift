@@ -1,5 +1,9 @@
 import Foundation
 
+// The analyzer and its log reader are one long type for now; splitting them
+// into files is a change of its own, so the size rules are off for them.
+// swiftlint:disable file_length
+
 /// Reads the usage log and suggests rules that match how the user really
 /// switches. Nothing is changed here; the suggestions are only shown.
 ///
@@ -15,7 +19,7 @@ import Foundation
 /// Shift is judged key by key: a key typed in Chinese with Shift held that
 /// was deleted and typed again, a key switched to English that was deleted at
 /// once, and switching back to English just after letting go of Shift.
-public struct UsageAnalyzer: Sendable {
+public struct UsageAnalyzer: Sendable { // swiftlint:disable:this type_body_length
     public struct Thresholds: Sendable {
         /// Visits corrected to the same input source before a rule is suggested.
         public var minimumCorrections = 8
@@ -26,7 +30,7 @@ public struct UsageAnalyzer: Sendable {
         /// Letters typed in a visit for it to count; only passing by does not.
         public var minimumVisitLetters = 3
         /// A switch later than this after the rule was applied is not a correction.
-        public var correctionMilliseconds = 10_000.0
+        public var correctionMilliseconds = 10000.0
         /// A switch this soon after one of the app's own is the system, not the user.
         public var reactionMilliseconds = 200.0
         /// A switch undone this quickly is a flicker, not a choice.
@@ -37,9 +41,9 @@ public struct UsageAnalyzer: Sendable {
         public var fieldShare = 0.9
 
         /// A key deleted this soon after it was typed was a mistake.
-        public var shiftDeleteMilliseconds = 3_000.0
+        public var shiftDeleteMilliseconds = 3000.0
         /// How soon a deleted key has to be typed again to count as a retry.
-        public var shiftRetypeMilliseconds = 10_000.0
+        public var shiftRetypeMilliseconds = 10000.0
         /// Times a Shift key went wrong before a change is suggested.
         public var minimumShiftMistakes = 3
         /// Share of the key's Chinese uses retyped before it should switch.
@@ -47,7 +51,7 @@ public struct UsageAnalyzer: Sendable {
         /// Share of the key's switches deleted before it should not.
         public var shiftDisableShare = 0.3
         /// How soon after Shift switched back a switch to English undoes it.
-        public var restoreUndoMilliseconds = 2_000.0
+        public var restoreUndoMilliseconds = 2000.0
         public var minimumRestoreUndos = 5
         public var restoreUndoShare = 0.3
         /// Share of the mistakes in one application for a change only there.
@@ -108,7 +112,9 @@ public struct UsageAnalyzer: Sendable {
         /// one, or else the rule of the terminal.
         func target(forCandidates candidates: [String], in bundleIdentifier: String?) -> String? {
             for candidate in candidates {
-                if let target = commandTargets[CommandRuleSet.matchKey(candidate)] { return target }
+                if let target = commandTargets[CommandRuleSet.matchKey(candidate)] {
+                    return target
+                }
             }
             return bundleIdentifier.flatMap(target(for:))
         }
@@ -161,7 +167,9 @@ public struct UsageAnalyzer: Sendable {
         var lastSwitchMono: Double?
         var letters: [String: Int] = [:]
 
-        var letterCount: Int { letters.values.reduce(0, +) }
+        var letterCount: Int {
+            letters.values.reduce(0, +)
+        }
     }
 
     fileprivate struct ScopeStats {
@@ -192,10 +200,11 @@ public struct UsageAnalyzer: Sendable {
         var deleted = 0
     }
 
+    fileprivate enum PendingShiftKind { case passedInChinese, switched }
+
     fileprivate struct PendingShiftKey {
-        enum Kind { case passedInChinese, switched }
         var id: ShiftKeyID
-        var kind: Kind
+        var kind: PendingShiftKind
         var mono: Double
         var deleted = false
     }
@@ -238,7 +247,10 @@ public struct UsageAnalyzer: Sendable {
                     guard UsageAnalyzer.contains(UsageAnalyzer.shiftRestoreReason, in: buffer),
                           let app = UsageAnalyzer.value(after: UsageAnalyzer.appKey, in: buffer)
                     else { return nil }
-                    return .shiftRestore(app: app, mono: UsageAnalyzer.number(after: UsageAnalyzer.monoKey, in: buffer) ?? 0)
+                    return .shiftRestore(
+                        app: app,
+                        mono: UsageAnalyzer.number(after: UsageAnalyzer.monoKey, in: buffer) ?? 0
+                    )
                 }
                 for (marker, kind) in UsageAnalyzer.parsedEvents where UsageAnalyzer.contains(marker, in: buffer) {
                     return .parse(kind)
@@ -249,12 +261,12 @@ public struct UsageAnalyzer: Sendable {
             switch quick {
             case nil:
                 return
-            case .key(let key):
+            case let .key(key):
                 readKey(key)
-            case .shiftRestore(let app, let mono):
+            case let .shiftRestore(app, mono):
                 restores[app, default: (0, 0)].count += 1
                 pendingRestore = (app, mono)
-            case .parse(let kind):
+            case let .parse(kind):
                 guard
                     let data = line.data(using: .utf8),
                     let event = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
@@ -282,7 +294,9 @@ public struct UsageAnalyzer: Sendable {
             if let correction = visit.correction {
                 stats.corrections[correction, default: 0] += 1
             }
-            if stats.bundleIdentifier == nil { stats.bundleIdentifier = visit.bundleIdentifier }
+            if stats.bundleIdentifier == nil {
+                stats.bundleIdentifier = visit.bundleIdentifier
+            }
             scopes[visit.scope] = stats
         }
 
@@ -309,7 +323,9 @@ public struct UsageAnalyzer: Sendable {
         }
 
         private mutating func readAppFocus(_ event: [String: Any], app: String, mono: Double) {
-            if let name = event["appName"] as? String { applicationNames[app] = name }
+            if let name = event["appName"] as? String {
+                applicationNames[app] = name
+            }
             fieldHasOwnRule = false
             pendingShiftKey = nil
             pendingRestore = nil
@@ -324,7 +340,9 @@ public struct UsageAnalyzer: Sendable {
         private mutating func readTerminal(_ event: [String: Any], app: String, mono: Double) {
             guard let program = program(in: event["context"], app: app) else { return }
             if var visit, visit.bundleIdentifier == app {
-                if visit.scope == program.scope && visit.tty == program.tty { return }
+                if visit.scope == program.scope, visit.tty == program.tty {
+                    return
+                }
                 // Found after the terminal became active, before typing: the
                 // same visit, and a switch already made was for the program.
                 if case .app = visit.scope, visit.letterCount == 0 {
@@ -353,7 +371,8 @@ public struct UsageAnalyzer: Sendable {
                   event["ownSwitch"] as? Bool != true
             else { return }
             if let since = (event["sinceOwnSwitchMs"] as? NSNumber)?.doubleValue,
-               since < thresholds.reactionMilliseconds {
+               since < thresholds.reactionMilliseconds
+            {
                 return
             }
             let from = event["from"] as? String
@@ -362,7 +381,8 @@ public struct UsageAnalyzer: Sendable {
             // Switching to English just after Shift switched back.
             if let restore = pendingRestore, restore.app == app,
                mono - restore.mono <= thresholds.restoreUndoMilliseconds,
-               SlashCommandTracker.isKeyboardLayout(to) {
+               SlashCommandTracker.isKeyboardLayout(to)
+            {
                 restores[app, default: (0, 0)].undone += 1
                 pendingRestore = nil
             }
@@ -389,10 +409,13 @@ public struct UsageAnalyzer: Sendable {
 
             if key.isBackspace {
                 if var pending = pendingShiftKey, pending.id.bundleIdentifier == app,
-                   key.mono - pending.mono <= thresholds.shiftDeleteMilliseconds {
+                   key.mono - pending.mono <= thresholds.shiftDeleteMilliseconds
+                {
                     switch pending.kind {
                     case .switched:
-                        if !pending.deleted { shiftKeys[pending.id, default: ShiftKeyStats()].deleted += 1 }
+                        if !pending.deleted {
+                            shiftKeys[pending.id, default: ShiftKeyStats()].deleted += 1
+                        }
                         pendingShiftKey = nil
                     case .passedInChinese:
                         pending.deleted = true
@@ -412,7 +435,8 @@ public struct UsageAnalyzer: Sendable {
 
             guard category == ShiftKeyCategory.letter.rawValue, let source = key.current else { return }
             if let signature = fieldSignatures[app] ?? nil {
-                fieldLetters[FieldKey(bundleIdentifier: app, signature: signature), default: [:]][source, default: 0] += 1
+                fieldLetters[FieldKey(bundleIdentifier: app, signature: signature), default: [:]][source, default: 0] +=
+                    1
             }
             if !fieldHasOwnRule, visit?.bundleIdentifier == app {
                 visit?.letters[source, default: 0] += 1
@@ -422,7 +446,8 @@ public struct UsageAnalyzer: Sendable {
         private mutating func readShiftedKey(_ key: KeyFields, app: String, keyCode: Int) {
             let id = ShiftKeyID(bundleIdentifier: app, keyCode: keyCode)
             if let pending = pendingShiftKey, pending.id == id, pending.kind == .passedInChinese, pending.deleted,
-               key.mono - pending.mono <= thresholds.shiftRetypeMilliseconds {
+               key.mono - pending.mono <= thresholds.shiftRetypeMilliseconds
+            {
                 shiftKeys[id, default: ShiftKeyStats()].retyped += 1
                 pendingShiftKey = nil
                 return
@@ -448,8 +473,12 @@ public struct UsageAnalyzer: Sendable {
     }
 
     private func ruleSuggestions(_ reader: Reader, current: CurrentRules) -> [RuleSuggestion] {
-        func name(_ id: String) -> String { current.inputSourceNames[id] ?? id }
-        func appName(_ bundle: String) -> String { reader.applicationNames[bundle] ?? bundle }
+        func name(_ id: String) -> String {
+            current.inputSourceNames[id] ?? id
+        }
+        func appName(_ bundle: String) -> String {
+            reader.applicationNames[bundle] ?? bundle
+        }
 
         var result: [RuleSuggestion] = []
         for (scope, stats) in reader.scopes.sorted(by: { $0.key < $1.key }) {
@@ -467,7 +496,7 @@ public struct UsageAnalyzer: Sendable {
             let typed = "打的字母 \(percent(topLetters, of: letters)) 是在 \(name(top.key)) 下打的"
 
             switch scope {
-            case .app(let bundle):
+            case let .app(bundle):
                 let target = current.target(for: bundle)
                 guard !reader.terminals.contains(bundle), target != top.key else { continue }
                 result.append(
@@ -476,10 +505,14 @@ public struct UsageAnalyzer: Sendable {
                         title: "\(appName(bundle)) 默认用 \(name(top.key))",
                         evidence: "最近进入 \(appName(bundle)) 并打字 \(stats.visits) 次，\(corrected)；\(typed)。"
                             + "现在的规则是 \(target.map(name) ?? "未设置")。",
-                        action: .setAppRule(bundleIdentifier: bundle, applicationName: appName(bundle), inputSourceID: top.key)
+                        action: .setAppRule(
+                            bundleIdentifier: bundle,
+                            applicationName: appName(bundle),
+                            inputSourceID: top.key
+                        )
                     )
                 )
-            case .command(let key):
+            case let .command(key):
                 let command = reader.commandNames[key] ?? key
                 let target = current.target(forCandidates: stats.candidates, in: stats.bundleIdentifier)
                 guard target != top.key else { continue }
@@ -499,8 +532,12 @@ public struct UsageAnalyzer: Sendable {
     }
 
     private func fieldSuggestions(_ reader: Reader, current: CurrentRules) -> [RuleSuggestion] {
-        func name(_ id: String) -> String { current.inputSourceNames[id] ?? id }
-        func appName(_ bundle: String) -> String { reader.applicationNames[bundle] ?? bundle }
+        func name(_ id: String) -> String {
+            current.inputSourceNames[id] ?? id
+        }
+        func appName(_ bundle: String) -> String {
+            reader.applicationNames[bundle] ?? bundle
+        }
 
         var result: [RuleSuggestion] = []
         let sorted = reader.fieldLetters.sorted {
@@ -520,11 +557,13 @@ public struct UsageAnalyzer: Sendable {
                   })
             else { continue }
             let label = key.signature.suggestedLabel
+            let fieldName = key.signature.identifier ?? key.signature.descriptor ?? ""
+            let share = percent(top.value, of: total)
             result.append(
                 RuleSuggestion(
-                    id: "field:\(key.bundleIdentifier):\(key.signature.role):\(key.signature.identifier ?? key.signature.descriptor ?? "")=\(top.key)",
+                    id: "field:\(key.bundleIdentifier):\(key.signature.role):\(fieldName)=\(top.key)",
                     title: "\(appName(key.bundleIdentifier)) 的“\(label)”用 \(name(top.key))",
-                    evidence: "在这个输入框里敲了 \(total) 个字母键，\(top.value) 个（\(percent(top.value, of: total))）是在 \(name(top.key)) 下敲的；"
+                    evidence: "在这个输入框里敲了 \(total) 个字母键，\(top.value) 个（\(share)）是在 \(name(top.key)) 下敲的；"
                         + "App 默认是 \(current.target(for: key.bundleIdentifier).map(name) ?? "未设置")。",
                     action: .addFieldRule(
                         bundleIdentifier: key.bundleIdentifier,
@@ -552,11 +591,20 @@ public struct UsageAnalyzer: Sendable {
         return top.key
     }
 
+    // swiftlint:disable:next function_body_length
     private func shiftSuggestions(_ reader: Reader, current: CurrentRules) -> [RuleSuggestion] {
-        func appName(_ bundle: String) -> String { reader.applicationNames[bundle] ?? bundle }
-        func place(_ bundle: String?) -> String { bundle.map { "在 \(appName($0)) 里" } ?? "在各个 App 里" }
-        func scopeID(_ bundle: String?) -> String { bundle ?? "global" }
-        func titleSuffix(_ bundle: String?) -> String { bundle.map { "（\(appName($0))）" } ?? "" }
+        func appName(_ bundle: String) -> String {
+            reader.applicationNames[bundle] ?? bundle
+        }
+        func place(_ bundle: String?) -> String {
+            bundle.map { "在 \(appName($0)) 里" } ?? "在各个 App 里"
+        }
+        func scopeID(_ bundle: String?) -> String {
+            bundle ?? "global"
+        }
+        func titleSuffix(_ bundle: String?) -> String {
+            bundle.map { "（\(appName($0))）" } ?? ""
+        }
 
         var result: [RuleSuggestion] = []
         let byKey = Dictionary(grouping: reader.shiftKeys, by: \.key.keyCode)
@@ -566,7 +614,9 @@ public struct UsageAnalyzer: Sendable {
             let category = ShiftKey.key(forKeyCode: keyCode)?.category ?? .symbol
 
             func sum(_ bundle: String?, _ value: (ShiftKeyStats) -> Int) -> Int {
-                if let bundle { return perApp[bundle].map(value) ?? 0 }
+                if let bundle {
+                    return perApp[bundle].map(value) ?? 0
+                }
                 return perApp.values.map(value).reduce(0, +)
             }
 
@@ -579,7 +629,8 @@ public struct UsageAnalyzer: Sendable {
                Double(retyped) / Double(max(chineseUses, 1)) >= thresholds.shiftEnableShare,
                !enableOptions.switches(keyCode: keyCode, category: category),
                // An application where Shift was turned off stays off.
-               !(enableIn != nil && current.shiftAppRules[enableIn!]?.switchesNothing == true) {
+               !(enableIn != nil && current.shiftAppRules[enableIn!]?.switchesNothing == true)
+            {
                 result.append(
                     RuleSuggestion(
                         id: "shiftKey:\(scopeID(enableIn)):\(keyCode)=on",
@@ -602,7 +653,8 @@ public struct UsageAnalyzer: Sendable {
             let switches = sum(disableIn, \.switches)
             if deleted >= thresholds.minimumShiftMistakes,
                Double(deleted) / Double(max(switches, 1)) >= thresholds.shiftDisableShare,
-               current.shiftOptions(for: disableIn).switches(keyCode: keyCode, category: category) {
+               current.shiftOptions(for: disableIn).switches(keyCode: keyCode, category: category)
+            {
                 result.append(
                     RuleSuggestion(
                         id: "shiftKey:\(scopeID(disableIn)):\(keyCode)=off",
@@ -622,11 +674,18 @@ public struct UsageAnalyzer: Sendable {
 
         // Switched back to English just after letting go of Shift.
         let restoreIn = scope(of: reader.restores, mistakes: \.undone)
-        let undone = restoreIn.map { reader.restores[$0]?.undone ?? 0 } ?? reader.restores.values.map(\.undone).reduce(0, +)
-        let restores = restoreIn.map { reader.restores[$0]?.count ?? 0 } ?? reader.restores.values.map(\.count).reduce(0, +)
+        let undone = restoreIn.map { reader.restores[$0]?.undone ?? 0 } ?? reader.restores.values.map(\.undone).reduce(
+            0,
+            +
+        )
+        let restores = restoreIn.map { reader.restores[$0]?.count ?? 0 } ?? reader.restores.values.map(\.count).reduce(
+            0,
+            +
+        )
         if undone >= thresholds.minimumRestoreUndos,
            Double(undone) / Double(max(restores, 1)) >= thresholds.restoreUndoShare,
-           current.shiftOptions(for: restoreIn).restoresOnRelease {
+           current.shiftOptions(for: restoreIn).restoresOnRelease
+        {
             result.append(
                 RuleSuggestion(
                     id: "shiftRestore:\(scopeID(restoreIn))=off",
@@ -736,18 +795,18 @@ public struct UsageAnalyzer: Sendable {
     }
 }
 
-extension UsageAnalyzer {
+public extension UsageAnalyzer {
     /// How many of the newest days of the log are read: habits change, and
     /// the log keeps more.
-    public static let analyzedDays = 14
+    static let analyzedDays = 14
 
     /// The lines of the newest days of the usage log in the default folder.
-    @Sendable public static func linesOfUsageLog() -> [String] {
+    @Sendable static func linesOfUsageLog() -> [String] {
         lines(inLogFiles: Array(JSONLUsageLogger().logFiles().suffix(analyzedDays)))
     }
 
     /// Reads the lines of the given log files, oldest first.
-    public static func lines(inLogFiles files: [URL]) -> [String] {
+    static func lines(inLogFiles files: [URL]) -> [String] {
         files.flatMap { url -> [String] in
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
             return text.split(separator: "\n").map(String.init)

@@ -1,0 +1,41 @@
+# SwiftLint rules (Scripts/check.sh runs the pinned version with --strict).
+included:
+  - Sources
+  - Tests
+excluded:
+  - .build
+
+disabled_rules:
+  # SwiftFormat owns layout.
+  - trailing_comma
+  - opening_brace
+  - vertical_parameter_alignment
+  # Short names such as dx, dy, t, u are the natural names in curve maths.
+  - identifier_name
+  # Process names, paths and log lines are raw bytes decoded leniently on purpose:
+  # a failable String(bytes:encoding:) would drop the whole value for one bad byte.
+  - optional_data_string_conversion
+
+opt_in_rules:
+  - empty_count
+  - first_where
+  - contains_over_first_not_nil
+  - unused_optional_binding
+  - weak_delegate
+
+line_length:
+  warning: 120
+  ignores_urls: true
+  ignores_comments: false
+
+type_body_length:
+  warning: 400
+file_length:
+  warning: 600
+function_body_length:
+  warning: 80
+cyclomatic_complexity:
+  warning: 15
+  ignores_case_statements: true
+large_tuple:
+  warning: 3

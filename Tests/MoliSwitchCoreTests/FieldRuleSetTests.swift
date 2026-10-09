@@ -1,6 +1,5 @@
 import Foundation
 import XCTest
-
 @testable import MoliSwitchCore
 
 final class FieldRuleSetTests: XCTestCase {
