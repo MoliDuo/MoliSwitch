@@ -58,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // The runtime and the updater are created only by the process that holds
         // the single instance lock, so a second launch never installs a second
         // set of observers.
+        let usageLogger = JSONLUsageLogger()
         let runtime = AppRuntime(
             store: ruleStore,
             commandStore: JSONCommandRuleStore(
@@ -66,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             fieldStore: JSONFieldRuleStore(
                 url: ruleStore.url.deletingLastPathComponent().appendingPathComponent("field-rules.json")
             ),
+            usageLogger: usageLogger,
+            inputMethodProbe: InputMethodProbe(logger: usageLogger),
             defaults: defaults,
             updateController: UpdateController.makeForHostBundle()
         )

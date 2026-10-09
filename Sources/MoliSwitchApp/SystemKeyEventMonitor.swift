@@ -84,6 +84,65 @@ final class SystemKeyEventMonitor: KeyEventMonitoring {
         !heldEvents.isEmpty
     }
 
+    var heldKeyCount: Int {
+        heldEvents.count
+    }
+
+    var supportsInputSourceShortcut: Bool {
+        tap != nil
+    }
+
+    /// The id of "Select the previous input source" in com.apple.symbolichotkeys.
+    private static let selectPreviousInputSourceHotKey = "60"
+
+    func postSelectPreviousInputSourceShortcut() -> String? {
+        let domain = "com.apple.symbolichotkeys" as CFString
+        CFPreferencesAppSynchronize(domain)
+        guard
+            let hotKeys = CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString, domain) as? [String: Any],
+            let entry = hotKeys[Self.selectPreviousInputSourceHotKey] as? [String: Any],
+            (entry["enabled"] as? Bool) ?? ((entry["enabled"] as? Int) == 1),
+            let value = entry["value"] as? [String: Any],
+            let parameters = value["parameters"] as? [Int],
+            parameters.count >= 3,
+            parameters[1] != 0xFFFF,
+            let source = CGEventSource(stateID: .hidSystemState)
+        else {
+            return nil
+        }
+
+        let keyCode = CGKeyCode(parameters[1])
+        let flags = CGEventFlags(rawValue: UInt64(parameters[2]))
+        // The hot key only fires when the modifiers are pressed as keys of
+        // their own around it; flags on the key alone are not enough.
+        let modifiers = Self.modifierKeyCodes.filter { flags.contains($0.flag) }
+        var events: [(CGKeyCode, Bool, CGEventFlags)] = []
+        var held: CGEventFlags = []
+        for modifier in modifiers {
+            held.insert(modifier.flag)
+            events.append((modifier.keyCode, true, held))
+        }
+        events.append((keyCode, true, flags))
+        events.append((keyCode, false, flags))
+        for modifier in modifiers.reversed() {
+            held.remove(modifier.flag)
+            events.append((modifier.keyCode, false, held))
+        }
+        for (code, down, eventFlags) in events {
+            guard let event = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down) else {
+                return nil
+            }
+            event.flags = eventFlags
+            event.setIntegerValueField(.eventSourceUserData, value: Self.replayMarker)
+            event.post(tap: .cghidEventTap)
+        }
+        return (InputMethodProbe.flagNames(flags) + ["key\(keyCode)"]).joined(separator: "+")
+    }
+
+    private static let modifierKeyCodes: [(flag: CGEventFlags, keyCode: CGKeyCode)] = [
+        (.maskControl, 59), (.maskAlternate, 58), (.maskShift, 56), (.maskCommand, 55),
+    ]
+
     private func type(_ keyDown: CGEvent) {
         keyDown.setIntegerValueField(.eventSourceUserData, value: Self.replayMarker)
         keyDown.post(tap: .cghidEventTap)

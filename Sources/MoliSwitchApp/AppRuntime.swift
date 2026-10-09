@@ -16,6 +16,10 @@ final class AppRuntime: ObservableObject {
     /// Not shown in the settings: how long a slash waits after the switch, in
     /// milliseconds, for trying out what an application needs.
     static let slashCommandSwitchDelayKey = "slashCommandSwitchDelayMilliseconds"
+    /// Not shown in the settings: whether switching back after Shift or a slash
+    /// command presses the system shortcut "Select the previous input source"
+    /// instead of selecting the input source directly. On unless set to false.
+    static let restoreUsesSystemShortcutKey = "restoreUsesSystemShortcut"
     static let shiftEnglishEnabledKey = "shiftEnglishEnabled"
     static let usageLoggingEnabledKey = "usageLoggingEnabled"
     static let shiftRestoresOnReleaseKey = "shiftRestoresOnRelease"
@@ -241,6 +245,9 @@ final class AppRuntime: ObservableObject {
     private let inputSourceIndicator: any InputSourceIndicatorControlling
     private let switchCounter: SwitchCounter
     private let usageLogger: any UsageLogging
+    /// Reads what the system says about input methods for the usage log. Nil
+    /// in tests, where there is no real system to read.
+    private let inputMethodProbe: InputMethodProbe?
     private let defaults: UserDefaults
     private let ownBundleIdentifier: String?
     let updateController: UpdateController?
@@ -269,6 +276,13 @@ final class AppRuntime: ObservableObject {
     private var lastCapsMono: Double?
     private var recentCapsMonos: [Double] = []
     private var capsReadbackTasks: [Task<Void, Never>] = []
+    /// For the input method probes: a number for each switch and each probed
+    /// key, when this app last switched, and the pending probe after a pause.
+    private var switchSequence = 0
+    private var keySequence = 0
+    private var lastOwnSwitchMono: Double?
+    private var lastKeyFieldProbeMono: Double = 0
+    private var keyPauseProbeTask: Task<Void, Never>?
     private var snapshotTask: Task<Void, Never>?
     private var terminalUnavailableLogged = false
 
@@ -319,6 +333,7 @@ final class AppRuntime: ObservableObject {
         inputSourceIndicator: any InputSourceIndicatorControlling = SystemInputSourceIndicator(),
         switchCounter: SwitchCounter = SwitchCounter(),
         usageLogger: any UsageLogging = JSONLUsageLogger(),
+        inputMethodProbe: InputMethodProbe? = nil,
         suggestionLines: (@Sendable () -> [String])? = nil,
         defaults: UserDefaults = .standard,
         updateController: UpdateController? = nil,
@@ -344,6 +359,7 @@ final class AppRuntime: ObservableObject {
         self.inputSourceIndicator = inputSourceIndicator
         self.switchCounter = switchCounter
         self.usageLogger = usageLogger
+        self.inputMethodProbe = inputMethodProbe
         self.defaults = defaults
         self.updateController = updateController
         self.ownBundleIdentifier = ownBundleIdentifier
@@ -403,6 +419,7 @@ final class AppRuntime: ObservableObject {
         lastObservedSourceID = currentInputSource?.id
         logSnapshot("appStart")
         startSnapshotHeartbeat()
+        inputMethodProbe?.startObservingNotifications()
         startSuggestionRefresh()
         reportLoginStatus()
         startMonitoring()
@@ -1586,6 +1603,7 @@ final class AppRuntime: ObservableObject {
                 "shiftRelease",
                 ["current": .optional(currentID), "decision": .string(String(describing: decision))]
             )
+            probe("shiftReleaseProbe", ["decision": .string(String(describing: decision))], parts: .all)
             if case .restore(let previousID) = decision {
                 restoreAfterShift(previousID)
             }
@@ -1628,6 +1646,15 @@ final class AppRuntime: ObservableObject {
         lastCapsMono = mono
         recentCapsMonos = (recentCapsMonos + [mono]).suffix(5)
         logUsage("capsLock", fields)
+        probe("capsProbe", ["capsAtMono": .double(mono), "afterMs": 0, "capsLock": .bool(capsLock)], parts: .all)
+        for delay in [30, 100, 250, 500, 1000] {
+            probe(
+                "capsProbe",
+                ["capsAtMono": .double(mono), "afterMs": .int(delay), "capsLock": .bool(capsLock)],
+                parts: delay == 250 || delay == 1000 ? .all : [.windows],
+                afterMs: delay
+            )
+        }
         scheduleCapsReadback(startedAt: mono, capsLock: capsLock)
     }
 
@@ -1719,6 +1746,7 @@ final class AppRuntime: ObservableObject {
                 "slashState": .string(slashCommandTracker.stateDescription),
             ]
         )
+        probeKey(key, keyFields: keyFields, currentID: currentID)
 
         switch shiftDecision {
         case .pass:
@@ -1752,7 +1780,7 @@ final class AppRuntime: ObservableObject {
 
             let selectedID = self.inputSourceManager.currentInputSource()?.id
             if selectedID == englishID {
-                self.selectInputSourceForKeys(previousID, reason: "shiftRestore")
+                await self.restoreInputSource(previousID, reason: "shiftRestore")
             } else {
                 Diagnostics.record(.shift, .info, "restore skipped, \(selectedID ?? "nil") was selected meanwhile")
                 self.logUsage(
@@ -1763,6 +1791,11 @@ final class AppRuntime: ObservableObject {
 
             if self.shiftRestoreHoldsKeys {
                 try? await Task.sleep(for: switchDelay, tolerance: .milliseconds(1))
+                self.logUsage(
+                    "heldKeysReleased",
+                    ["reason": "shiftRestore", "count": .int(self.keyEventMonitor.heldKeyCount),
+                     "current": .optional(self.inputSourceManager.currentInputSource()?.id)]
+                )
                 self.keyEventMonitor.releaseHeldKeys()
             }
             self.shiftRestoreHoldsKeys = false
@@ -1776,6 +1809,13 @@ final class AppRuntime: ObservableObject {
         Task { [weak self] in
             // Without a tolerance the timer may fire 10 ms late.
             try? await Task.sleep(for: delay, tolerance: .milliseconds(1))
+            if let self {
+                self.logUsage(
+                    "heldKeysReleased",
+                    ["reason": "switch", "count": .int(self.keyEventMonitor.heldKeyCount),
+                     "current": .optional(self.inputSourceManager.currentInputSource()?.id)]
+                )
+            }
             self?.keyEventMonitor.releaseHeldKeys()
             let elapsed = Diagnostics.milliseconds(since: pressed)
             Diagnostics.record(.slash, .debug, "held keys released \(elapsed) ms after the first was pressed")
@@ -1842,7 +1882,7 @@ final class AppRuntime: ObservableObject {
                     )
                     return
                 }
-                self.selectInputSourceForKeys(previousID, reason: "slashRestore")
+                await self.restoreInputSource(previousID, reason: "slashRestore")
             }
             return false
         }
@@ -2610,6 +2650,7 @@ final class AppRuntime: ObservableObject {
         if let lastCapsMono { fields["sinceCapsMs"] = .double(mono - lastCapsMono) }
         if let lastModifierMono { fields["sinceModifierMs"] = .double(mono - lastModifierMono) }
         logUsage("systemInputSourceChanged", fields)
+        probe("sourceChangeProbe", ["from": .optional(previousID), "to": .optional(now?.id), "ownSwitch": .bool(ownSwitch)], parts: .all)
 
         guard !ownSwitch, previousID != now?.id else { return }
         var manual = fields
@@ -2659,6 +2700,7 @@ final class AppRuntime: ObservableObject {
     /// that moment and not only the decisions.
     private func logSnapshot(_ reason: String) {
         guard usageLogger.isEnabled else { return }
+        probe("snapshotProbe", ["reason": .string(reason)], parts: .all)
 
         let current = inputSourceManager.currentInputSource()
         let options = globalShiftOptions
@@ -2724,6 +2766,8 @@ final class AppRuntime: ObservableObject {
     /// Selects an input source and records what came of it: how long it took,
     /// why it failed, and what the system says shortly after.
     private func selectLogged(_ id: String, reason: String, rule: ActiveRule? = nil, from: String?) -> Bool {
+        switchSequence += 1
+        probe("switchProbe", ["seq": .int(switchSequence), "phase": "before", "reason": .string(reason), "to": .string(id)], parts: .all)
         let start = ContinuousClock.now
         pendingSelfSwitch = (id, UsageEvent.currentMonotonicMilliseconds())
         let selected = inputSourceManager.selectInputSource(id: id)
@@ -2748,7 +2792,7 @@ final class AppRuntime: ObservableObject {
         logUsage("switch", fields)
 
         if selected {
-            scheduleSwitchVerification(target: id)
+            scheduleSwitchVerification(target: id, reason: reason)
         } else {
             logSnapshot("switchFailed")
         }
@@ -2757,8 +2801,17 @@ final class AppRuntime: ObservableObject {
 
     /// Reads the input source back after a switch: a different answer means
     /// the system or the input method changed it again.
-    private func scheduleSwitchVerification(target: String) {
+    private func scheduleSwitchVerification(target: String, reason: String) {
         guard usageLogger.isEnabled else { return }
+        lastOwnSwitchMono = UsageEvent.currentMonotonicMilliseconds()
+        for delay in [0, 30, 80, 150, 300, 1000] {
+            probe(
+                "switchProbe",
+                ["seq": .int(switchSequence), "phase": "after", "afterMs": .int(delay), "reason": .string(reason), "target": .string(target)],
+                parts: delay == 150 || delay == 1000 ? .all : [.windows],
+                afterMs: delay
+            )
+        }
         for delay in [50, 300] {
             Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(delay))
@@ -2772,6 +2825,149 @@ final class AppRuntime: ObservableObject {
                     ]
                 )
             }
+        }
+    }
+
+    // MARK: - Switching back
+
+    private var restoreUsesSystemShortcut: Bool {
+        defaults.object(forKey: Self.restoreUsesSystemShortcutKey) as? Bool ?? true
+    }
+
+    /// Switches back to the input source used before Shift or a slash command
+    /// switched to English.
+    ///
+    /// Selected directly from here, an input method such as Shuangpin is
+    /// sometimes current for the system while the frontmost application keeps
+    /// typing letters, until Caps Lock is pressed twice. Caps Lock switches
+    /// inside the application, so the same is done here with the system
+    /// shortcut for the previous input source, when that is the one wanted.
+    /// Selecting directly stays as the fallback.
+    private func restoreInputSource(_ id: String, reason: String) async {
+        let from = inputSourceManager.currentInputSource()?.id
+        let basis = shortcutRestoreBasis(target: id, from: from)
+        guard
+            restoreUsesSystemShortcut,
+            keyEventMonitor.supportsInputSourceShortcut,
+            from != id,
+            let basis
+        else {
+            selectInputSourceForKeys(id, reason: reason)
+            return
+        }
+
+        switchSequence += 1
+        let sequence = switchSequence
+        probe(
+            "switchProbe",
+            ["seq": .int(sequence), "phase": "before", "reason": .string(reason), "to": .string(id), "method": "shortcut"],
+            parts: .all
+        )
+        let start = ContinuousClock.now
+        pendingSelfSwitch = (id, UsageEvent.currentMonotonicMilliseconds())
+        guard let shortcut = keyEventMonitor.postSelectPreviousInputSourceShortcut() else {
+            pendingSelfSwitch = nil
+            logUsage("switchShortcutUnavailable", ["reason": .string(reason), "to": .string(id), "from": .optional(from)])
+            selectInputSourceForKeys(id, reason: reason)
+            return
+        }
+
+        // The keys held meanwhile are typed after the shortcut in any case,
+        // as they are posted after it; this wait is for the log and the fallback.
+        var current = from
+        let deadline = start + .milliseconds(200)
+        var polls = 0
+        while ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(3), tolerance: .milliseconds(1))
+            polls += 1
+            current = inputSourceManager.currentInputSource()?.id
+            if current != from { break }
+        }
+        let elapsed = Self.milliseconds(of: ContinuousClock.now - start)
+        var fields: [String: JSONValue] = [
+            "reason": .string(reason), "from": .optional(from), "to": .string(id), "ok": .bool(current == id),
+            "ms": .double(elapsed), "method": "shortcut", "shortcut": .string(shortcut), "basis": .string(basis),
+            "polls": .int(polls), "seq": .int(sequence),
+        ]
+        guard current == id else {
+            fields["actual"] = .optional(current)
+            logUsage("switchShortcutMissed", fields)
+            logSnapshot("switchShortcutMissed")
+            selectInputSourceForKeys(id, reason: reason + "Fallback")
+            return
+        }
+        logUsage("switch", fields)
+        switchCounter.recordSwitch()
+        switchCount = switchCounter.count
+        currentInputSource = inputSources.first { $0.id == id } ?? inputSourceManager.currentInputSource()
+        scheduleSwitchVerification(target: id, reason: reason)
+    }
+
+    /// Why the previous input source is the one wanted, or nil when it may not be.
+    private func shortcutRestoreBasis(target: String, from: String?) -> String? {
+        let ids = inputSources.map(\.id)
+        if ids.count == 2, ids.contains(target), let from, ids.contains(from) {
+            return "twoSources"
+        }
+        let domain = "com.apple.HIToolbox" as CFString
+        CFPreferencesAppSynchronize(domain)
+        guard
+            let history = CFPreferencesCopyAppValue("AppleInputSourceHistory" as CFString, domain) as? [[String: Any]],
+            history.count >= 2
+        else {
+            return nil
+        }
+        func id(_ entry: [String: Any]) -> String? {
+            entry["Input Mode"] as? String ?? entry["Bundle ID"] as? String
+        }
+        return id(history[1]) == target ? "history" : nil
+    }
+
+    // MARK: - Input method probes
+
+    private func probe(
+        _ name: String,
+        _ fields: [String: JSONValue],
+        parts: InputMethodProbe.Parts,
+        afterMs: Int = 0
+    ) {
+        guard usageLogger.isEnabled, let inputMethodProbe else { return }
+        inputMethodProbe.record(
+            name,
+            fields + ["app": .optional(currentApplication?.bundleIdentifier)],
+            parts: parts,
+            afterMs: afterMs,
+            mayLogText: mayLogTypedText()
+        )
+    }
+
+    /// While an input method is current, and for three seconds after this app
+    /// switched, what follows each key: the windows on screen 60 ms later
+    /// (candidate windows among them), and the text around the caret during
+    /// typing, at most twice a second, and once typing pauses.
+    private func probeKey(_ key: SlashCommandKey, keyFields: [String: JSONValue], currentID: String?) {
+        guard usageLogger.isEnabled, inputMethodProbe != nil else { return }
+        let mono = UsageEvent.currentMonotonicMilliseconds()
+        let afterOwnSwitch = lastOwnSwitchMono.map { mono - $0 < 3000 } ?? false
+        let inInputMethod = currentID.map { !Self.isKeyboardLayout($0) } ?? false
+        guard afterOwnSwitch || inInputMethod else { return }
+
+        keySequence += 1
+        var fields = keyFields
+        fields["keySeq"] = .int(keySequence)
+        fields["current"] = .optional(currentID)
+        fields["afterOwnSwitch"] = .bool(afterOwnSwitch)
+        if let lastOwnSwitchMono { fields["sinceOwnSwitchMs"] = .double(mono - lastOwnSwitchMono) }
+        probe("keyProbe", fields + ["afterMs": 60], parts: afterOwnSwitch ? .all : [.windows], afterMs: 60)
+        if mono - lastKeyFieldProbeMono > 500 {
+            lastKeyFieldProbeMono = mono
+            probe("keyProbe", fields + ["afterMs": 150], parts: [.windows, .field], afterMs: 150)
+        }
+        keyPauseProbeTask?.cancel()
+        keyPauseProbeTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled, let self else { return }
+            self.probe("keyPauseProbe", fields, parts: [.windows, .field, .processes])
         }
     }
 
