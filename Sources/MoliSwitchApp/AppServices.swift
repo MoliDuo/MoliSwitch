@@ -102,4 +102,26 @@ protocol KeyEventMonitoring: AnyObject {
     func stop()
     /// Types the keys held back, in the order they were pressed.
     func releaseHeldKeys()
+    /// How many keys are held back now.
+    var heldKeyCount: Int { get }
+    /// Whether postSelectPreviousInputSourceShortcut() can press keys at all.
+    var supportsInputSourceShortcut: Bool { get }
+    /// Presses the system shortcut "Select the previous input source", so the
+    /// frontmost application switches the way it does for Caps Lock. Returns
+    /// a description of the keys pressed, or nil when the shortcut is off.
+    func postSelectPreviousInputSourceShortcut() -> String?
+}
+
+extension KeyEventMonitoring {
+    var heldKeyCount: Int {
+        -1
+    }
+
+    var supportsInputSourceShortcut: Bool {
+        false
+    }
+
+    func postSelectPreviousInputSourceShortcut() -> String? {
+        nil
+    }
 }
